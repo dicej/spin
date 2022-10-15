@@ -5,9 +5,9 @@ use tokio_postgres::{
     types::{ToSql, Type},
     Client, NoTls, Row,
 };
-use wit_bindgen_wasmtime::async_trait;
+use wit_bindgen_host_wasmtime_rust::async_trait;
 
-wit_bindgen_wasmtime::export!({paths: ["../../wit/ephemeral/outbound-pg.wit"], async: *});
+wit_bindgen_host_wasmtime_rust::export!({paths: ["../../wit/ephemeral/outbound-pg.wit"], async: *});
 use outbound_pg::{Column, DbDataType, DbValue, ParameterValue, PgError, RowSet};
 
 /// A simple implementation to support outbound pg connection

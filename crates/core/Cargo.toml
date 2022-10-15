@@ -7,10 +7,10 @@ edition = "2021"
 anyhow = "1.0"
 tracing = "0.1"
 async-trait = "0.1"
-wasi-cap-std-sync = "0.39"
-wasi-common = "0.39"
-wasmtime = "0.39"
-wasmtime-wasi = { version = "0.39", features = ["tokio"] }
+wasi-cap-std-sync = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main" }
+wasi-common = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main" }
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main" }
+wasmtime-wasi = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3"

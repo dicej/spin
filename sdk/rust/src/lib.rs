@@ -40,7 +40,7 @@ pub mod http {
 /// Implementation of the spin redis interface.
 #[allow(missing_docs)]
 pub mod redis {
-    wit_bindgen_rust::import!("../../wit/ephemeral/outbound-redis.wit");
+    wit_bindgen_guest_rust::import!("../../wit/ephemeral/outbound-redis.wit");
 
     /// Exports the generated outbound Redis items.
     pub use outbound_redis::*;
@@ -49,7 +49,7 @@ pub mod redis {
 /// Implementation of the spin postgres db interface.
 #[allow(missing_docs)]
 pub mod pg {
-    wit_bindgen_rust::import!("../../wit/ephemeral/outbound-pg.wit");
+    wit_bindgen_guest_rust::import!("../../wit/ephemeral/outbound-pg.wit");
 
     /// Exports the generated outbound Pg items.
     pub use outbound_pg::*;
@@ -58,7 +58,7 @@ pub mod pg {
 /// Implementation of the spin config interface.
 #[allow(missing_docs)]
 pub mod config {
-    wit_bindgen_rust::import!("../../wit/ephemeral/spin-config.wit");
+    wit_bindgen_guest_rust::import!("../../wit/ephemeral/spin-config.wit");
 
     /// Exports the generated Spin config items.
     pub use spin_config::{get_config as get, Error};

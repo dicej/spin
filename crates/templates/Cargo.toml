@@ -35,10 +35,9 @@ tokio = { version = "1.10", features = [ "fs", "process", "rt", "macros" ] }
 toml = "0.5"
 url = "2.2.2"
 walkdir = "2"
-wasmtime = { version = "0.39.1", features = [ "async" ] }
-wasmtime-wasi = "0.39.1"
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main", features = [ "async" ] }
+wasmtime-wasi = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main" }
 
-[dependencies.wit-bindgen-wasmtime]
+[dependencies.wit-bindgen-host-wasmtime-rust]
 git = "https://github.com/bytecodealliance/wit-bindgen"
-rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba"
-features = ["async"]
+rev = "4934194d9bcb420df68d2a18598c27dd276c1263"

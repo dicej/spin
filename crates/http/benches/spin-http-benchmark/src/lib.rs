@@ -1,4 +1,4 @@
-wit_bindgen_rust::export!("../../../../wit/ephemeral/spin-http.wit");
+wit_bindgen_guest_rust::export!("../../../../wit/ephemeral/spin-http.wit");
 
 struct SpinHttp {}
 

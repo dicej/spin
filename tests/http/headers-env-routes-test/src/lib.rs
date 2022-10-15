@@ -2,7 +2,7 @@
 use spin_http::{Request, Response};
 
 // Generate Rust bindings for interface defined in spin-http.wit file
-wit_bindgen_rust::export!("spin-http.wit");
+wit_bindgen_guest_rust::export!("spin-http.wit");
 
 struct SpinHttp;
 impl spin_http::SpinHttp for SpinHttp {

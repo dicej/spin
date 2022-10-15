@@ -4,11 +4,11 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use anyhow::Result;
 use redis::{aio::Connection, AsyncCommands};
-use wit_bindgen_wasmtime::async_trait;
+use wit_bindgen_host_wasmtime_rust::async_trait;
 
 pub use host_component::OutboundRedisComponent;
 
-wit_bindgen_wasmtime::export!({paths: ["../../wit/ephemeral/outbound-redis.wit"], async: *});
+wit_bindgen_host_wasmtime_rust::export!({paths: ["../../wit/ephemeral/outbound-redis.wit"], async: *});
 use outbound_redis::Error;
 
 #[derive(Default)]

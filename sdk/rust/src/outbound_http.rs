@@ -2,7 +2,7 @@ use http::{header::HeaderName, HeaderValue};
 
 use super::http::{Request, Response};
 
-wit_bindgen_rust::import!("../../wit/ephemeral/wasi-outbound-http.wit");
+wit_bindgen_guest_rust::import!("../../wit/ephemeral/wasi-outbound-http.wit");
 
 use wasi_outbound_http::{
     HttpError as OutboundHttpError, Request as OutboundRequest, Response as OutboundResponse,
@@ -40,7 +40,7 @@ pub fn send_request(req: Request) -> Result<Response> {
         status,
         headers,
         body,
-    } = wasi_outbound_http::request(out_req)?;
+    } = wasi_outbound_http::send(out_req)?;
 
     let resp_builder = http::response::Builder::new().status(status);
     let resp_builder = headers

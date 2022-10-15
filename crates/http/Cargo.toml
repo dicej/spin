@@ -31,10 +31,9 @@ tokio = { version = "1.10", features = ["full"] }
 tokio-rustls = { version = "0.23.2" }
 tracing = { version = "0.1", features = ["log"] }
 
-[dependencies.wit-bindgen-wasmtime]
+[dependencies.wit-bindgen-gen-host-wasmtime-rust]
 git = "https://github.com/bytecodealliance/wit-bindgen"
-rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba"
-features = ["async"]
+rev = "4934194d9bcb420df68d2a18598c27dd276c1263"
 
 [dev-dependencies]
 criterion = { version = "0.3.5", features = ["async_tokio"] }

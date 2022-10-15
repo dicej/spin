@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use wit_bindgen_gen_core::{wit_parser::Interface, Direction, Files, Generator};
-use wit_bindgen_gen_rust_wasm::RustWasm;
+use wit_bindgen_core::{wit_parser::Interface, Direction, Files, Generator};
+use wit_bindgen_gen_guest_rust::RustWasm;
 
 /// The entrypoint to a Spin HTTP component written in Rust.
 #[proc_macro_attribute]

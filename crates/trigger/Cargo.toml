@@ -24,7 +24,7 @@ spin-loader = { path = "../loader" }
 spin-manifest = { path = "../manifest" }
 tracing = { version = "0.1", features = [ "log" ] }
 url = "2"
-wasmtime = "0.39.1"
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "main" }
 
 [dev-dependencies]
 tempfile = "3.3.0"

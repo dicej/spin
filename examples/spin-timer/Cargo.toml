@@ -12,7 +12,6 @@ tokio = { version = "1.14", features = [ "full" ] }
 tracing = { version = "0.1", features = [ "log" ] }
 tracing-subscriber = { version = "0.3.7", features = [ "env-filter" ] }
 
-[dependencies.wit-bindgen-wasmtime]
+[dependencies.wit-bindgen-gen-host-wasmtime-rust]
 git = "https://github.com/bytecodealliance/wit-bindgen"
-rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba"
-features = ["async"]
+rev = "4934194d9bcb420df68d2a18598c27dd276c1263"

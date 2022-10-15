@@ -1,4 +1,4 @@
-wit_bindgen_rust::export!("../spin-timer.wit");
+wit_bindgen_guest_rust::export!("../spin-timer.wit");
 
 struct SpinTimer;
 impl spin_timer::SpinTimer for SpinTimer {

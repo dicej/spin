@@ -9,18 +9,18 @@ use liquid_core::{Filter, ParseFilter, Runtime, ValueView};
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
-wit_bindgen_wasmtime::import!({paths: ["./wit/custom-filter.wit"]});
+wit_bindgen_host_wasmtime_rust::import!({paths: ["./wit/custom-filter.wit"]});
 
 struct CustomFilterContext {
     wasi: WasiCtx,
-    data: custom_filter::CustomFilterData,
+    data: custom_filter::CustomFilter,
 }
 
 impl CustomFilterContext {
     fn new() -> Self {
         Self {
             wasi: WasiCtxBuilder::new().build(),
-            data: custom_filter::CustomFilterData {},
+            data: custom_filter::CustomFilter {},
         }
     }
 }

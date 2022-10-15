@@ -1,7 +1,7 @@
 use spin_redis::{Error, Payload};
 use std::str::{from_utf8, Utf8Error};
 
-wit_bindgen_rust::export!("../../../../wit/ephemeral/spin-redis.wit");
+wit_bindgen_guest_rust::export!("../../../../wit/ephemeral/spin-redis.wit");
 
 struct SpinRedis {}
 
