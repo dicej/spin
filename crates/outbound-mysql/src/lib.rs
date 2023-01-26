@@ -1,9 +1,10 @@
 use mysql_async::consts::ColumnType;
-use mysql_async::{from_value_opt, prelude::*};
+use mysql_async::{from_value_opt, prelude::*, OptsBuilder, SslOpts};
 pub use outbound_mysql::add_to_linker;
 use spin_core::HostComponent;
 use std::collections::HashMap;
 use std::sync::Arc;
+use url::Url;
 use wit_bindgen_wasmtime::async_trait;
 
 wit_bindgen_wasmtime::export!({paths: ["../../wit/ephemeral/outbound-mysql.wit"], async: *});
@@ -244,7 +245,19 @@ impl OutboundMysql {
 async fn build_conn(address: &str) -> Result<mysql_async::Conn, mysql_async::Error> {
     tracing::log::debug!("Build new connection: {}", address);
 
-    let connection_pool = mysql_async::Pool::new(address);
+    let url = Url::parse(address)?;
+
+    let use_ssl = url
+        .query_pairs()
+        .any(|(k, v)| k == "ssl-mode" && v != "DISABLED");
+
+    let opts = OptsBuilder::from_opts(address).ssl_opts(if use_ssl {
+        Some(SslOpts::default())
+    } else {
+        None
+    });
+
+    let connection_pool = mysql_async::Pool::new(opts);
 
     connection_pool.get_conn().await
 }
