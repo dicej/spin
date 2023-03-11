@@ -96,6 +96,7 @@ fermyon-platform = []
 [workspace]
 members = [
   "crates/abi-conformance",
+  "crates/adapter",
   "crates/app",
   "crates/bindle",
   "crates/build",
@@ -140,3 +141,13 @@ features = ["async"]
 [[bin]]
 name = "spin"
 path = "src/bin/spin.rs"
+
+[profile.release.package.spin-adapter]
+opt-level = 's'
+strip = 'debuginfo'
+
+[profile.dev.package.spin-adapter]
+incremental = false
+opt-level = 's'
+debug-assertions = false
+overflow-checks = false

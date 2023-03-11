@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "cloud"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "cloud-openapi",
@@ -833,7 +833,7 @@ dependencies = [
  "itertools",
  "log",
  "smallvec",
- "wasmparser",
+ "wasmparser 0.96.0",
  "wasmtime-types",
 ]
 
@@ -1325,7 +1325,7 @@ checksum = "0bd4b30a6560bbd9b4620f4de34c3f14f60848e58a9b7216801afcb4c7b31c3c"
 
 [[package]]
 name = "e2e-testing"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1891,6 +1891,9 @@ name = "heck"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "hermit-abi"
@@ -2991,7 +2994,7 @@ dependencies = [
 
 [[package]]
 name = "outbound-http"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "http",
@@ -3005,7 +3008,7 @@ dependencies = [
 
 [[package]]
 name = "outbound-mysql"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "mysql_async",
@@ -3019,7 +3022,7 @@ dependencies = [
 
 [[package]]
 name = "outbound-pg"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "native-tls",
@@ -3033,7 +3036,7 @@ dependencies = [
 
 [[package]]
 name = "outbound-redis"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "redis",
@@ -4274,7 +4277,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin-abi-conformance"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "cap-std",
@@ -4293,8 +4296,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin-adapter"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+ "wit-bindgen-rust 0.2.0",
+]
+
+[[package]]
 name = "spin-app"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4307,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "spin-bindle"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "bindle",
@@ -4335,7 +4346,7 @@ dependencies = [
 
 [[package]]
 name = "spin-build"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4349,7 +4360,7 @@ dependencies = [
 
 [[package]]
 name = "spin-cli"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4414,7 +4425,7 @@ dependencies = [
 
 [[package]]
 name = "spin-config"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4432,7 +4443,7 @@ dependencies = [
 
 [[package]]
 name = "spin-core"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4448,7 +4459,7 @@ dependencies = [
 
 [[package]]
 name = "spin-http"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4477,7 +4488,7 @@ dependencies = [
 
 [[package]]
 name = "spin-key-value"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "lru 0.9.0",
@@ -4502,7 +4513,7 @@ dependencies = [
 
 [[package]]
 name = "spin-loader"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4544,12 +4555,12 @@ dependencies = [
  "syn",
  "wit-bindgen-gen-core 0.2.0 (git+https://github.com/bytecodealliance/wit-bindgen?rev=cb871cfa1ee460b51eb1d144b175b9aab9c50aba)",
  "wit-bindgen-gen-rust-wasm",
- "wit-bindgen-rust",
+ "wit-bindgen-rust 0.2.0",
 ]
 
 [[package]]
 name = "spin-manifest"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "indexmap",
  "serde",
@@ -4559,7 +4570,7 @@ dependencies = [
 
 [[package]]
 name = "spin-oci"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
@@ -4582,7 +4593,7 @@ dependencies = [
 
 [[package]]
 name = "spin-plugins"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4603,7 +4614,7 @@ dependencies = [
 
 [[package]]
 name = "spin-redis-engine"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4620,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "spin-sdk"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4628,12 +4639,12 @@ dependencies = [
  "http",
  "spin-macro",
  "thiserror",
- "wit-bindgen-rust",
+ "wit-bindgen-rust 0.2.0",
 ]
 
 [[package]]
 name = "spin-templates"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4669,7 +4680,7 @@ dependencies = [
 
 [[package]]
 name = "spin-testing"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "http",
@@ -4686,7 +4697,7 @@ dependencies = [
 
 [[package]]
 name = "spin-trigger"
-version = "1.0.0-rc.1"
+version = "1.0.0-pre0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5571,6 +5582,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f7d56227d910901ce12dfd19acc40c12687994dfb3f57c90690f80be946ec5"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
+name = "wasm-metadata"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b7bb6ee6f92a75dde1b7dcb05e17008a96c8a19a869e63395b21d549efa9351"
+dependencies = [
+ "anyhow",
+ "indexmap",
+ "serde",
+ "wasm-encoder 0.24.1",
+ "wasmparser 0.101.1",
+]
+
+[[package]]
 name = "wasm-streams"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5588,6 +5621,16 @@ name = "wasmparser"
 version = "0.96.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adde01ade41ab9a5d10ec8ed0bb954238cf8625b5cd5a13093d6de2ad9c2be1a"
+dependencies = [
+ "indexmap",
+ "url",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.101.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf2f22ef84ac5666544afa52f326f13e16f3d019d2e61e704fd8091c9358b130"
 dependencies = [
  "indexmap",
  "url",
@@ -5613,7 +5656,7 @@ dependencies = [
  "rayon",
  "serde",
  "target-lexicon",
- "wasmparser",
+ "wasmparser 0.96.0",
  "wasmtime-cache",
  "wasmtime-component-macro",
  "wasmtime-cranelift",
@@ -5691,7 +5734,7 @@ dependencies = [
  "object",
  "target-lexicon",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.96.0",
  "wasmtime-environ",
 ]
 
@@ -5710,7 +5753,7 @@ dependencies = [
  "serde",
  "target-lexicon",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.96.0",
  "wasmtime-types",
 ]
 
@@ -5808,7 +5851,7 @@ dependencies = [
  "cranelift-entity",
  "serde",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.96.0",
 ]
 
 [[package]]
@@ -5854,7 +5897,7 @@ dependencies = [
  "leb128",
  "memchr",
  "unicode-width",
- "wasm-encoder",
+ "wasm-encoder 0.22.0",
 ]
 
 [[package]]
@@ -6081,6 +6124,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen"
+version = "0.3.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#cd59db533a2319a901dfa49561d7843d920ce271"
+dependencies = [
+ "bitflags",
+ "wit-bindgen-rust-macro",
+]
+
+[[package]]
+name = "wit-bindgen-core"
+version = "0.3.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#cd59db533a2319a901dfa49561d7843d920ce271"
+dependencies = [
+ "anyhow",
+ "wit-component",
+ "wit-parser 0.6.2",
+]
+
+[[package]]
 name = "wit-bindgen-gen-core"
 version = "0.2.0"
 source = "git+https://github.com/fermyon/wit-bindgen-backport?rev=a39003fadce6c7a8654e3e044fc39fc80d81ec7b#a39003fadce6c7a8654e3e044fc39fc80d81ec7b"
@@ -6147,6 +6209,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen-rust"
+version = "0.3.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#cd59db533a2319a901dfa49561d7843d920ce271"
+dependencies = [
+ "heck 0.4.0",
+ "wasm-metadata",
+ "wit-bindgen-core",
+ "wit-bindgen-rust-lib",
+ "wit-component",
+]
+
+[[package]]
 name = "wit-bindgen-rust-impl"
 version = "0.2.0"
 source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=cb871cfa1ee460b51eb1d144b175b9aab9c50aba#cb871cfa1ee460b51eb1d144b175b9aab9c50aba"
@@ -6155,6 +6229,28 @@ dependencies = [
  "syn",
  "wit-bindgen-gen-core 0.2.0 (git+https://github.com/bytecodealliance/wit-bindgen?rev=cb871cfa1ee460b51eb1d144b175b9aab9c50aba)",
  "wit-bindgen-gen-rust-wasm",
+]
+
+[[package]]
+name = "wit-bindgen-rust-lib"
+version = "0.3.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#cd59db533a2319a901dfa49561d7843d920ce271"
+dependencies = [
+ "heck 0.4.0",
+ "wit-bindgen-core",
+]
+
+[[package]]
+name = "wit-bindgen-rust-macro"
+version = "0.3.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen#cd59db533a2319a901dfa49561d7843d920ce271"
+dependencies = [
+ "anyhow",
+ "proc-macro2",
+ "syn",
+ "wit-bindgen-core",
+ "wit-bindgen-rust 0.3.0",
+ "wit-component",
 ]
 
 [[package]]
@@ -6179,6 +6275,23 @@ dependencies = [
  "syn",
  "wit-bindgen-gen-core 0.2.0 (git+https://github.com/fermyon/wit-bindgen-backport?rev=a39003fadce6c7a8654e3e044fc39fc80d81ec7b)",
  "wit-bindgen-gen-wasmtime",
+]
+
+[[package]]
+name = "wit-component"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "595aabf2a63cda48de700ca130ce26b9d857605d679c59add197e84235766156"
+dependencies = [
+ "anyhow",
+ "bitflags",
+ "indexmap",
+ "log",
+ "url",
+ "wasm-encoder 0.24.1",
+ "wasm-metadata",
+ "wasmparser 0.101.1",
+ "wit-parser 0.6.2",
 ]
 
 [[package]]
@@ -6216,6 +6329,21 @@ dependencies = [
  "indexmap",
  "pulldown-cmark",
  "unicode-xid",
+]
+
+[[package]]
+name = "wit-parser"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b48914ea89d43d7b51fed072143b86b499059a85e27b401e6cdbd0ca1f0c1dc9"
+dependencies = [
+ "anyhow",
+ "id-arena",
+ "indexmap",
+ "log",
+ "pulldown-cmark",
+ "unicode-xid",
+ "url",
 ]
 
 [[package]]
