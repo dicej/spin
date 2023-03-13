@@ -2,143 +2,77 @@
 #![no_implicit_prelude]
 #![no_std]
 
-extern crate core as core_real;
+extern crate alloc;
+extern crate core;
 extern crate wit_bindgen_real;
 extern crate wit_bindgen_rust;
 
 use {
-    core_real::{
+    alloc::{
+        alloc::{GlobalAlloc, Layout},
+        boxed::Box,
+    },
+    core::{
         arch::wasm32,
         clone::Clone,
         convert::{From, Into},
         marker::PhantomData,
         marker::Sized,
-        ops::{Deref, Fn},
+        mem::drop,
+        ops::Deref,
+        option::Option::{self, None, Some},
         panic, ptr,
+        result::Result::{self, Err, Ok},
     },
     http_types as ht, spin_http as sh,
     std::{
-        alloc::Layout,
-        boxed::Box,
         iter::{FromIterator, IntoIterator, Iterator},
-        option::Option::{self, None, Some},
-        result::Result::{self, Err, Ok},
         string::String,
         vec::Vec,
     },
     wasi_outbound_http as woh,
 };
 
-pub mod core {
-    use super::*;
-    pub use crate::core_real::{hint, mem, ptr};
+struct MyAllocator;
 
-    pub mod alloc {
-        use super::*;
-        pub use crate::std::alloc::Layout;
+#[global_allocator]
+static ALLOCATOR: MyAllocator = MyAllocator;
+
+unsafe impl GlobalAlloc for MyAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        #[link(wasm_import_module = "__main_module__")]
+        extern "C" {
+            fn cabi_realloc(
+                old_ptr: *mut u8,
+                old_len: usize,
+                align: usize,
+                new_len: usize,
+            ) -> *mut u8;
+        }
+
+        cabi_realloc(ptr::null_mut(), 0, layout.align(), layout.size())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        #[link(wasm_import_module = "__main_module__")]
+        extern "C" {
+            fn free(ptr: *mut u8, len: usize, align: usize);
+        }
+
+        free(ptr, layout.size(), layout.align())
     }
 }
 
 pub mod std {
     use super::*;
-    pub use crate::core::ptr;
-
-    pub mod option {
-        use super::*;
-
-        pub enum Option<T> {
-            Some(T),
-            None,
-        }
-
-        impl<T> Option<T> {
-            pub fn as_deref<U: ?Sized>(&self) -> Option<&U>
-            where
-                T: Deref<Target = U>,
-            {
-                if let Some(v) = self {
-                    Some(v.deref())
-                } else {
-                    None
-                }
-            }
-        }
-
-        impl<T: Clone> Clone for Option<T> {
-            fn clone(&self) -> Self {
-                if let Some(v) = self {
-                    Some(v.clone())
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub mod result {
-        use super::*;
-
-        pub enum Result<T, E> {
-            Ok(T),
-            Err(E),
-        }
-
-        impl<T, E> Result<T, E> {
-            pub fn unwrap(self) -> T {
-                wasm32::unreachable()
-            }
-
-            pub fn map<U>(self, f: impl Fn(T) -> U) -> Result<U, E> {
-                match self {
-                    Ok(v) => Ok(f(v)),
-                    Err(e) => Err(e),
-                }
-            }
-
-            pub fn map_err<U>(self, f: impl Fn(E) -> U) -> Result<T, U> {
-                match self {
-                    Ok(v) => Ok(v),
-                    Err(e) => Err(f(e)),
-                }
-            }
-        }
-    }
+    pub use crate::core::{iter, ptr};
 
     pub mod alloc {
         use super::*;
-
-        #[derive(Copy, Clone)]
-        pub struct Layout {
-            size: usize,
-            align: usize,
-        }
-
-        impl Layout {
-            pub fn from_size_align_unchecked(size: usize, align: usize) -> Self {
-                Self { size, align }
-            }
-
-            pub fn size(&self) -> usize {
-                self.size
-            }
-
-            pub fn align(&self) -> usize {
-                self.align
-            }
-        }
+        pub use crate::alloc::alloc::Layout;
 
         pub unsafe fn alloc(layout: Layout) -> *mut u8 {
-            #[link(wasm_import_module = "__main_module__")]
-            extern "C" {
-                fn cabi_realloc(
-                    old_ptr: *mut u8,
-                    old_len: usize,
-                    align: usize,
-                    new_len: usize,
-                ) -> *mut u8;
-            }
-
-            cabi_realloc(ptr::null_mut(), 0, layout.align(), layout.size())
+            MyAllocator.alloc(layout)
         }
 
         pub fn handle_alloc_error(layout: Layout) -> ! {
@@ -146,12 +80,7 @@ pub mod std {
         }
 
         pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
-            #[link(wasm_import_module = "__main_module__")]
-            extern "C" {
-                fn free(ptr: *mut u8, len: usize, align: usize);
-            }
-
-            free(ptr, layout.size(), layout.align())
+            MyAllocator.dealloc(ptr, layout)
         }
     }
 
@@ -159,11 +88,13 @@ pub mod std {
         use super::*;
 
         #[derive(Clone)]
-        pub struct String;
+        pub struct String(crate::alloc::string::String);
 
         impl String {
             pub fn from_utf8(bytes: Vec<u8>) -> Result<Self, ()> {
-                wasm32::unreachable()
+                crate::alloc::string::String::from_utf8(bytes.0)
+                    .map(Self)
+                    .map_err(drop)
             }
 
             pub fn from_utf8_unchecked(bytes: Vec<u8>) -> Self {
@@ -188,79 +119,6 @@ pub mod std {
         }
     }
 
-    pub mod iter {
-        use super::*;
-
-        pub struct Enumerate<T>(T);
-
-        impl<T: Iterator> Iterator for Enumerate<T> {
-            type Item = (usize, T::Item);
-        }
-
-        pub trait Iterator {
-            type Item;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                wasm32::unreachable()
-            }
-
-            fn enumerate(self) -> Enumerate<Self>
-            where
-                Self: Sized,
-            {
-                wasm32::unreachable()
-            }
-
-            fn collect<B: FromIterator<Self::Item>>(self) -> B
-            where
-                Self: Sized,
-            {
-                wasm32::unreachable()
-            }
-
-            fn map<U, F: Fn(Self::Item) -> U>(self, f: F) -> Map<Self, F>
-            where
-                Self: Sized,
-            {
-                wasm32::unreachable()
-            }
-        }
-
-        pub trait FromIterator<A>: Sized {
-            fn from_iter<T>(iter: T) -> Self
-            where
-                T: IntoIterator<Item = A>;
-        }
-
-        pub trait IntoIterator {
-            type Item;
-            type IntoIter: Iterator<Item = Self::Item>;
-
-            fn into_iter(self) -> Self::IntoIter;
-        }
-
-        pub struct SliceIterator<'a, T>(PhantomData<&'a T>);
-
-        impl<'a, T> Iterator for SliceIterator<'a, T> {
-            type Item = &'a T;
-        }
-
-        impl<'a, T> IntoIterator for &'a [T] {
-            type Item = &'a T;
-            type IntoIter = SliceIterator<'a, T>;
-
-            fn into_iter(self) -> Self::IntoIter {
-                wasm32::unreachable()
-            }
-        }
-
-        pub struct Map<I, F>(I, F);
-
-        impl<T, I: Iterator<Item = T>, U, F: Fn(T) -> U> Iterator for Map<I, F> {
-            type Item = U;
-        }
-    }
-
     pub mod boxed {
         use super::*;
 
@@ -282,7 +140,7 @@ pub mod std {
         use super::*;
 
         #[derive(Clone)]
-        pub struct Vec<T>(PhantomData<T>);
+        pub struct Vec<T>(pub crate::alloc::vec::Vec<T>);
 
         impl<T> Vec<T> {
             pub fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
@@ -309,7 +167,17 @@ pub mod std {
                 wasm32::unreachable()
             }
 
-            pub fn iter(&self) -> super::iter::SliceIterator<'_, T> {
+            pub fn iter(&self) -> SliceIterator<'_, T> {
+                wasm32::unreachable()
+            }
+        }
+
+        pub struct SliceIterator<'a, T>(PhantomData<&'a T>);
+
+        impl<'a, T> Iterator for SliceIterator<'a, T> {
+            type Item = &'a T;
+
+            fn next(&mut self) -> Option<&'a T> {
                 wasm32::unreachable()
             }
         }
