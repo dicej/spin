@@ -97,16 +97,18 @@ pub mod std {
                     .map_err(drop)
             }
 
-            pub fn from_utf8_unchecked(bytes: Vec<u8>) -> Self {
-                wasm32::unreachable()
+            /// # Safety
+            /// See [crate::alloc::string::String::from_utf8_unchecked].
+            pub unsafe fn from_utf8_unchecked(bytes: Vec<u8>) -> Self {
+                Self(crate::alloc::string::String::from_utf8_unchecked(bytes.0))
             }
 
             pub fn into_bytes(self) -> Vec<u8> {
-                wasm32::unreachable()
+                Vec(self.0.into_bytes())
             }
 
             pub fn as_str(&self) -> &str {
-                wasm32::unreachable()
+                self.0.as_str()
             }
         }
 
@@ -114,7 +116,7 @@ pub mod std {
             type Target = str;
 
             fn deref(&self) -> &Self::Target {
-                wasm32::unreachable()
+                self.as_str()
             }
         }
     }
@@ -128,6 +130,10 @@ pub mod std {
         impl<T> Box<[T]> {
             pub fn len(&self) -> usize {
                 wasm32::unreachable()
+            }
+
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
             }
 
             pub fn as_ptr(&self) -> *const T {
@@ -240,12 +246,6 @@ mod wit_bindgen {
             static mut RUN: bool = false;
             unsafe {
                 if !RUN {
-                    // This function is synthesized by `wasm-ld` to run all static
-                    // constructors. wasm-ld will either provide an implementation
-                    // of this symbol, or synthesize a wrapper around each
-                    // exported function to (unconditionally) run ctors. By using
-                    // this function, the linked module is opting into "manually"
-                    // running ctors.
                     extern "C" {
                         fn __wasm_call_ctors();
                     }
