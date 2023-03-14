@@ -6,6 +6,19 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-[dependencies]
-wit-bindgen-rust = { path = "../../../wit-bindgen-old/crates/rust-wasm", default-features = false, features = ["macros"] }
-wit-bindgen-real = { package = "wit-bindgen", path = "../../../wit-bindgen/crates/guest-rust", default-features = false, features = ["macros"] }
+[dependencies.wit-bindgen-rust]
+git = "https://github.com/dicej/wit-bindgen"
+branch = "adapter-hack-old"
+default-features = false
+features = ["macros"]
+
+[dependencies.wit-bindgen-real]
+git = "https://github.com/dicej/wit-bindgen"
+branch = "adapter-hack-new"
+package = "wit-bindgen"
+default-features = false
+features = ["macros"]
+
+[build-dependencies]
+wasm-encoder = "0.24"
+object = { version = "0.29.0", default-features = false, features = ["archive"] }

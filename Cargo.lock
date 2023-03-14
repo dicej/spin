@@ -4299,8 +4299,10 @@ dependencies = [
 name = "spin-adapter"
 version = "0.1.0"
 dependencies = [
+ "object",
+ "wasm-encoder 0.24.1",
  "wit-bindgen",
- "wit-bindgen-rust 0.2.0",
+ "wit-bindgen-rust 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -5583,6 +5585,15 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f7d56227d910901ce12dfd19acc40c12687994dfb3f57c90690f80be946ec5"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
+name = "wasm-encoder"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4eff853c4f09eec94d76af527eddad4e9de13b11d6286a1ef7134bc30135a2b7"
@@ -6126,6 +6137,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen"
 version = "0.4.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-new#1c996967c1524641f02426d4e4227d3599838a91"
 dependencies = [
  "bitflags",
  "wit-bindgen-rust-macro",
@@ -6134,6 +6146,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-core"
 version = "0.4.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-new#1c996967c1524641f02426d4e4227d3599838a91"
 dependencies = [
  "anyhow",
  "wit-component",
@@ -6143,9 +6156,10 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-gen-core"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "anyhow",
- "wit-parser 0.2.0",
+ "wit-parser 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -6169,9 +6183,10 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-gen-rust"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "heck 0.3.3",
- "wit-bindgen-gen-core 0.2.0",
+ "wit-bindgen-gen-core 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -6195,10 +6210,11 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-gen-rust-wasm"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "heck 0.3.3",
- "wit-bindgen-gen-core 0.2.0",
- "wit-bindgen-gen-rust 0.2.0",
+ "wit-bindgen-gen-core 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
+ "wit-bindgen-gen-rust 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -6224,9 +6240,10 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-rust"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "bitflags",
- "wit-bindgen-rust-impl 0.2.0",
+ "wit-bindgen-rust-impl 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -6242,6 +6259,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-rust"
 version = "0.4.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-new#1c996967c1524641f02426d4e4227d3599838a91"
 dependencies = [
  "heck 0.4.0",
  "wasm-metadata",
@@ -6253,11 +6271,12 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-rust-impl"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "proc-macro2",
  "syn",
- "wit-bindgen-gen-core 0.2.0",
- "wit-bindgen-gen-rust-wasm 0.2.0",
+ "wit-bindgen-gen-core 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
+ "wit-bindgen-gen-rust-wasm 0.2.0 (git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old)",
 ]
 
 [[package]]
@@ -6274,6 +6293,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-rust-lib"
 version = "0.4.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-new#1c996967c1524641f02426d4e4227d3599838a91"
 dependencies = [
  "heck 0.4.0",
  "wit-bindgen-core",
@@ -6282,6 +6302,7 @@ dependencies = [
 [[package]]
 name = "wit-bindgen-rust-macro"
 version = "0.4.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-new#1c996967c1524641f02426d4e4227d3599838a91"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -6335,6 +6356,7 @@ dependencies = [
 [[package]]
 name = "wit-parser"
 version = "0.2.0"
+source = "git+https://github.com/dicej/wit-bindgen?branch=adapter-hack-old#39d42882b1e24beca7dc6c3e3288019800fe8342"
 dependencies = [
  "anyhow",
  "id-arena",

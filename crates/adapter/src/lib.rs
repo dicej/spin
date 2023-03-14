@@ -8,21 +8,18 @@ extern crate wit_bindgen_real;
 extern crate wit_bindgen_rust;
 
 use {
-    alloc::{
-        alloc::{GlobalAlloc, Layout},
-        boxed::Box,
-    },
+    alloc::alloc::{GlobalAlloc, Layout},
     core::{
         arch::wasm32,
         clone::Clone,
-        convert::{From, Into},
-        marker::PhantomData,
-        marker::Sized,
-        mem::drop,
-        ops::Deref,
+        convert::{From, Into, TryFrom, TryInto},
+        default::Default,
+        hint, mem,
+        ops::{Deref, Drop},
         option::Option::{self, None, Some},
-        panic, ptr,
+        ptr,
         result::Result::{self, Err, Ok},
+        slice, str,
     },
     http_types as ht, spin_http as sh,
     std::{
@@ -32,6 +29,18 @@ use {
     },
     wasi_outbound_http as woh,
 };
+
+struct State {
+    spin_http_ret_area: spin_http::RetArea,
+    wasi_outbound_http_ret_area: wasi_outbound_http::RetArea,
+    inbound_http_ret_area: inbound_http::RetArea,
+}
+
+#[allow(improper_ctypes)]
+extern "C" {
+    fn get_state_ptr() -> *mut State;
+    fn set_state_ptr(state: *mut State);
+}
 
 struct MyAllocator;
 
@@ -63,22 +72,66 @@ unsafe impl GlobalAlloc for MyAllocator {
     }
 }
 
+fn unwrap_result<T, E>(result: Result<T, E>) -> T {
+    if let Ok(v) = result {
+        v
+    } else {
+        wasm32::unreachable()
+    }
+}
+
+unsafe fn state() -> *mut State {
+    let mut ptr = get_state_ptr();
+    if ptr.is_null() {
+        ptr = std::alloc::alloc(Layout::from_size_align_unchecked(
+            mem::size_of::<State>(),
+            mem::align_of::<State>(),
+        )) as _;
+        ptr.write(State {
+            spin_http_ret_area: spin_http::RetArea(Default::default()),
+            wasi_outbound_http_ret_area: wasi_outbound_http::RetArea(Default::default()),
+            inbound_http_ret_area: inbound_http::RetArea(Default::default()),
+        });
+        set_state_ptr(ptr);
+    }
+    ptr
+}
+
+fn spin_http_get_ret_area() -> i32 {
+    unsafe { (*state()).spin_http_ret_area.0.as_mut_ptr() as i32 }
+}
+
+fn wasi_outbound_http_get_ret_area() -> i32 {
+    unsafe { (*state()).wasi_outbound_http_ret_area.0.as_mut_ptr() as i32 }
+}
+
+fn get_ret_area() -> i32 {
+    unsafe { (*state()).inbound_http_ret_area.0.as_mut_ptr() as i32 }
+}
+
 pub mod std {
     use super::*;
-    pub use crate::core::{iter, ptr};
+    pub use crate::{
+        alloc::boxed,
+        core::{hint, iter, ptr},
+    };
 
     pub mod alloc {
         use super::*;
         pub use crate::alloc::alloc::Layout;
 
+        /// # Safety
+        /// TODO
         pub unsafe fn alloc(layout: Layout) -> *mut u8 {
             MyAllocator.alloc(layout)
         }
 
-        pub fn handle_alloc_error(layout: Layout) -> ! {
+        pub fn handle_alloc_error(_layout: Layout) -> ! {
             wasm32::unreachable()
         }
 
+        /// # Safety
+        /// TODO
         pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
             MyAllocator.dealloc(ptr, layout)
         }
@@ -88,27 +141,21 @@ pub mod std {
         use super::*;
 
         #[derive(Clone)]
-        pub struct String(crate::alloc::string::String);
+        pub struct String(Vec<u8>);
 
         impl String {
-            pub fn from_utf8(bytes: Vec<u8>) -> Result<Self, ()> {
-                crate::alloc::string::String::from_utf8(bytes.0)
-                    .map(Self)
-                    .map_err(drop)
-            }
-
             /// # Safety
-            /// See [crate::alloc::string::String::from_utf8_unchecked].
+            /// TODO
             pub unsafe fn from_utf8_unchecked(bytes: Vec<u8>) -> Self {
-                Self(crate::alloc::string::String::from_utf8_unchecked(bytes.0))
+                Self(bytes)
             }
 
             pub fn into_bytes(self) -> Vec<u8> {
-                Vec(self.0.into_bytes())
+                self.0
             }
 
             pub fn as_str(&self) -> &str {
-                self.0.as_str()
+                unsafe { str::from_utf8_unchecked(self.0.deref()) }
             }
         }
 
@@ -121,70 +168,82 @@ pub mod std {
         }
     }
 
-    pub mod boxed {
-        use super::*;
-
-        #[derive(Clone)]
-        pub struct Box<T: ?Sized>(PhantomData<T>);
-
-        impl<T> Box<[T]> {
-            pub fn len(&self) -> usize {
-                wasm32::unreachable()
-            }
-
-            pub fn is_empty(&self) -> bool {
-                self.len() == 0
-            }
-
-            pub fn as_ptr(&self) -> *const T {
-                wasm32::unreachable()
-            }
-        }
-    }
-
     pub mod vec {
         use super::*;
 
         #[derive(Clone)]
-        pub struct Vec<T>(pub crate::alloc::vec::Vec<T>);
+        pub struct Vec<T> {
+            ptr: *mut T,
+            length: usize,
+            capacity: usize,
+        }
 
         impl<T> Vec<T> {
-            pub fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
-                wasm32::unreachable()
-            }
-
-            pub fn with_capacity(capacity: usize) -> Self {
-                wasm32::unreachable()
-            }
-
-            pub fn push(&mut self, v: T) {
-                wasm32::unreachable()
+            /// # Safety
+            /// TODO
+            pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self {
+                Self {
+                    ptr,
+                    length,
+                    capacity,
+                }
             }
 
             pub fn len(&self) -> usize {
-                wasm32::unreachable()
+                self.length
             }
 
             pub fn is_empty(&self) -> bool {
                 self.len() == 0
             }
 
-            pub fn into_boxed_slice(&self) -> Box<[T]> {
-                wasm32::unreachable()
+            pub fn into_boxed_slice(self) -> Array<T> {
+                let length = self.length;
+
+                unsafe {
+                    let ptr = alloc::alloc(Layout::from_size_align_unchecked(
+                        mem::size_of::<T>() * length,
+                        mem::align_of::<T>(),
+                    )) as *mut T;
+
+                    ptr::copy_nonoverlapping(self.ptr, ptr, self.length);
+
+                    crate::std::alloc::dealloc(
+                        self.ptr as _,
+                        Layout::from_size_align_unchecked(
+                            mem::size_of::<T>() * self.capacity,
+                            mem::align_of::<T>(),
+                        ),
+                    );
+
+                    mem::forget(self);
+
+                    Array { ptr, length }
+                }
             }
 
-            pub fn iter(&self) -> SliceIterator<'_, T> {
-                wasm32::unreachable()
+            pub fn iter(&self) -> RefIterator<'_, T> {
+                RefIterator {
+                    vec: self,
+                    offset: 0,
+                }
             }
         }
 
-        pub struct SliceIterator<'a, T>(PhantomData<&'a T>);
-
-        impl<'a, T> Iterator for SliceIterator<'a, T> {
-            type Item = &'a T;
-
-            fn next(&mut self) -> Option<&'a T> {
-                wasm32::unreachable()
+        impl<T> Drop for Vec<T> {
+            fn drop(&mut self) {
+                unsafe {
+                    for i in 0..unwrap_result(isize::try_from(self.length)) {
+                        mem::drop(ptr::read(self.ptr.offset(i)))
+                    }
+                    crate::std::alloc::dealloc(
+                        self.ptr as _,
+                        Layout::from_size_align_unchecked(
+                            mem::size_of::<T>() * self.capacity,
+                            mem::align_of::<T>(),
+                        ),
+                    )
+                }
             }
         }
 
@@ -192,17 +251,100 @@ pub mod std {
             type Target = [T];
 
             fn deref(&self) -> &Self::Target {
-                wasm32::unreachable()
+                unsafe { slice::from_raw_parts(self.ptr, self.length) }
             }
         }
 
-        pub struct VecIterator<T>(PhantomData<T>);
+        pub struct Array<T> {
+            ptr: *mut T,
+            length: usize,
+        }
+
+        impl<T> Array<T> {
+            pub fn as_ptr(&self) -> *const T {
+                self.ptr
+            }
+
+            pub fn len(&self) -> usize {
+                self.length
+            }
+
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
+            }
+        }
+
+        impl<T> Drop for Array<T> {
+            fn drop(&mut self) {
+                unsafe {
+                    for i in 0..unwrap_result(isize::try_from(self.length)) {
+                        mem::drop(ptr::read(self.ptr.offset(i)))
+                    }
+                    crate::std::alloc::dealloc(
+                        self.ptr as _,
+                        Layout::from_size_align_unchecked(
+                            mem::size_of::<T>() * self.length,
+                            mem::align_of::<T>(),
+                        ),
+                    )
+                }
+            }
+        }
+
+        pub struct RefIterator<'a, T> {
+            vec: &'a Vec<T>,
+            offset: isize,
+        }
+
+        impl<'a, T> Iterator for RefIterator<'a, T> {
+            type Item = &'a T;
+
+            fn next(&mut self) -> Option<&'a T> {
+                if unwrap_result(usize::try_from(self.offset)) < self.vec.len() {
+                    let v = unsafe { &*self.vec.ptr.offset(self.offset) };
+                    self.offset += 1;
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+        }
+
+        pub struct VecIterator<T> {
+            ptr: *mut T,
+            length: usize,
+            capacity: usize,
+            offset: isize,
+        }
+
+        impl<T> Drop for VecIterator<T> {
+            fn drop(&mut self) {
+                unsafe {
+                    for i in self.offset..unwrap_result(isize::try_from(self.length)) {
+                        mem::drop(ptr::read(self.ptr.offset(i)))
+                    }
+                    crate::std::alloc::dealloc(
+                        self.ptr as _,
+                        Layout::from_size_align_unchecked(
+                            mem::size_of::<T>() * self.capacity,
+                            mem::align_of::<T>(),
+                        ),
+                    )
+                }
+            }
+        }
 
         impl<T> Iterator for VecIterator<T> {
             type Item = T;
 
             fn next(&mut self) -> Option<T> {
-                wasm32::unreachable()
+                if unwrap_result(usize::try_from(self.offset)) < self.length {
+                    let v = unsafe { ptr::read(self.ptr.offset(self.offset)) };
+                    self.offset += 1;
+                    Some(v)
+                } else {
+                    None
+                }
             }
         }
 
@@ -211,13 +353,50 @@ pub mod std {
             type IntoIter = VecIterator<T>;
 
             fn into_iter(self) -> Self::IntoIter {
-                wasm32::unreachable()
+                let iter = VecIterator {
+                    ptr: self.ptr,
+                    length: self.length,
+                    capacity: self.capacity,
+                    offset: 0,
+                };
+                mem::forget(self);
+                iter
             }
         }
 
         impl<T> FromIterator<T> for Vec<T> {
-            fn from_iter<I>(iter: I) -> Self {
-                wasm32::unreachable()
+            fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+                let mut iter = iter.into_iter();
+                let len = iter.size_hint().0;
+
+                unsafe {
+                    let array = alloc::alloc(Layout::from_size_align_unchecked(
+                        mem::size_of::<T>() * len,
+                        mem::align_of::<T>(),
+                    )) as *mut T;
+
+                    if array.is_null() {
+                        wasm32::unreachable();
+                    }
+
+                    let mut offset = 0;
+                    for v in iter.by_ref() {
+                        if offset < len {
+                            array.offset(unwrap_result(offset.try_into())).write(v);
+                            offset += 1;
+                        } else {
+                            // Only `ExactSizeIterator`s supported
+                            wasm32::unreachable()
+                        }
+                    }
+
+                    if iter.next().is_some() {
+                        // Only `ExactSizeIterator`s supported
+                        wasm32::unreachable()
+                    }
+
+                    Self::from_raw_parts(array, offset, len)
+                }
             }
         }
     }
@@ -243,22 +422,19 @@ mod wit_bindgen {
         }
 
         pub fn run_ctors_once() {
-            static mut RUN: bool = false;
-            unsafe {
-                if !RUN {
-                    extern "C" {
-                        fn __wasm_call_ctors();
-                    }
-                    __wasm_call_ctors();
-                    RUN = true;
-                }
-            }
+            // ignore
         }
     }
 }
 
-wit_bindgen_rust::import!("../../wit/ephemeral/spin-http.wit");
-wit_bindgen_rust::export!("../../wit/ephemeral/wasi-outbound-http.wit");
+wit_bindgen_rust::import!({
+    paths: ["../../wit/ephemeral/spin-http.wit"],
+    unchecked
+});
+wit_bindgen_rust::export!({
+    paths: ["../../wit/ephemeral/wasi-outbound-http.wit"],
+    unchecked
+});
 wit_bindgen_real::generate!("spin" in "../../wit/preview2/spin.wit");
 
 impl From<woh::Method> for ht::Method {
