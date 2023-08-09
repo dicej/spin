@@ -1,0 +1,3 @@
+[submodule "wit/wasi-messaging"]
+        path = wit/wasi-messaging
+        url = https://github.com/dicej/wasi-messaging

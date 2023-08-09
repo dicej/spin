@@ -1,0 +1,20 @@
+[package]
+name = "spin-trigger-wasi-messaging"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = "1.0"
+tracing = { workspace = true }
+spin-app = { path = "../app" }
+spin-core = { path = "../core" }
+spin-trigger = { path = "../trigger" }
+wasi-cloud = { path = "../wasi-cloud" }
+serde = { version = "1.0", features = ["derive"] }
+redis-protocol = "4.1.0"
+futures = "0.3"
+tokio-util = { version = "0.7.8", features = ["codec"] }
+bytes = "1.4"
+tokio = { version = "1.32", features = ["full"] }
+url = "2.4"

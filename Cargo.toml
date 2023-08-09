@@ -59,6 +59,7 @@ spin-manifest = { path = "crates/manifest" }
 spin-oci = { path = "crates/oci" }
 spin-plugins = { path = "crates/plugins" }
 spin-redis-engine = { path = "crates/redis" }
+spin-trigger-wasi-messaging = { path = "crates/wasi-messaging" }
 spin-templates = { path = "crates/templates" }
 spin-trigger = { path = "crates/trigger" }
 tempfile = "3.3.0"
@@ -83,6 +84,8 @@ sha2 = "0.10.1"
 which = "4.2.5"
 e2e-testing = { path = "crates/e2e-testing" }
 hex = "0.4.3"
+tokio-util = { version = "0.7.8", features = ["codec"] }
+redis-protocol = "4.1.0"
 
 [build-dependencies]
 cargo-target-dep = { git = "https://github.com/fermyon/cargo-target-dep", rev = "b7b1989fe0984c0f7c4966398304c6538e52fe49" }
