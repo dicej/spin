@@ -1,3 +1,6 @@
 [submodule "wit/wasi-messaging"]
         path = wit/wasi-messaging
         url = https://github.com/dicej/wasi-messaging
+[submodule "wit/wasi-keyvalue"]
+	path = wit/wasi-keyvalue
+	url = https://github.com/webassembly/wasi-keyvalue

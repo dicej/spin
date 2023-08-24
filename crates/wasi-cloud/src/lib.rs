@@ -8,6 +8,7 @@ use wasi_http::wasi::http::types2 as types;
 use wasi_messaging::wasi::messaging::messaging_types;
 
 pub mod http;
+mod keyvalue;
 mod messaging;
 mod poll;
 mod streams;
@@ -15,7 +16,7 @@ mod streams;
 pub mod wasi_http {
     wasmtime::component::bindgen!({
         path: "../../wit/wasi-http",
-        world: "proxy",
+        world: "http-keyvalue",
         async: true
     });
 }

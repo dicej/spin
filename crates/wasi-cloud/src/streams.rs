@@ -27,7 +27,7 @@ pub struct InputStream {
 }
 
 impl InputStream {
-    async fn read(
+    pub async fn read(
         &mut self,
         len: u64,
         notify: Option<Arc<Notify>>,
@@ -145,7 +145,7 @@ pub struct OutputStream {
 }
 
 impl OutputStream {
-    async fn write(
+    pub async fn write(
         &mut self,
         buf: Vec<u8>,
         notify: Option<Arc<Notify>>,
