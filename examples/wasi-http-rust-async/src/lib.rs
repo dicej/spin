@@ -2,10 +2,10 @@ wit_bindgen::generate!("proxy" in "../../wit/wasi-http");
 
 use {
     self::{
-        exports::wasi::http::incoming_handler::IncomingHandler,
+        exports::wasi::http::incoming_handler2::IncomingHandler2 as IncomingHandler,
         wasi::{
             http::{
-                outgoing_handler,
+                outgoing_handler2 as outgoing_handler,
                 types2::{self as types, IncomingRequest, Method, ResponseOutparam, Scheme},
             },
             io::streams2::{self as streams, StreamStatus},

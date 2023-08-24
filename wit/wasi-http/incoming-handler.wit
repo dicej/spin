@@ -6,7 +6,7 @@
 //   `wasi:http/outgoing-handler` into a single `wasi:http/handler` interface
 //   that takes a `request` parameter and returns a `response` result.
 //
-interface incoming-handler {
+interface incoming-handler2 {
   use types2.{incoming-request, response-outparam}
 
   // The `handle` function takes an outparam instead of returning its response

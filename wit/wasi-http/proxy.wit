@@ -24,11 +24,11 @@ world proxy {
 
   // This is the default handler to use when user code simply wants to make an
   // HTTP request (e.g., via `fetch()`).
-  import outgoing-handler
+  import outgoing-handler2
 
   // The host delivers incoming HTTP requests to a component by calling the
   // `handle` function of this exported interface. A host may arbitrarily reuse
   // or not reuse component instance when delivering incoming HTTP requests and
   // thus a component must be able to handle 0..N calls to `handle`.
-  export incoming-handler
+  export incoming-handler2
 }

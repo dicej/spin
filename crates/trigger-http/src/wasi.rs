@@ -91,7 +91,7 @@ impl HttpExecutor for WasiHttpExecutor {
 
         let handle = task::spawn(async move {
             let result = proxy
-                .wasi_http_incoming_handler()
+                .wasi_http_incoming_handler2()
                 .call_handle(&mut store, request, response)
                 .await;
 
