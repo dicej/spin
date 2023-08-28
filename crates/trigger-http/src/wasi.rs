@@ -15,7 +15,7 @@ use wasi_cloud::{
     wasi_http::{
         wasi::http::types2::{Method, Scheme},
         HttpKeyvalue,
-    }
+    },
 };
 
 #[derive(Clone)]

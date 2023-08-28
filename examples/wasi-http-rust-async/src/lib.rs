@@ -1,8 +1,14 @@
-wit_bindgen::generate!("proxy" in "../../wit/wasi-http");
+wit_bindgen::generate!({
+    world: "proxy",
+    path: "../../wit/wasi-http",
+    exports: {
+        "wasi:http/incoming-handler2": Component
+    }
+});
 
 use {
     self::{
-        exports::wasi::http::incoming_handler2::IncomingHandler2 as IncomingHandler,
+        exports::wasi::http::incoming_handler2::Guest as IncomingHandler,
         wasi::{
             http::{
                 outgoing_handler2 as outgoing_handler,
@@ -35,8 +41,6 @@ impl IncomingHandler for Component {
     }
 }
 
-export_proxy!(Component);
-
 async fn handle_async(
     wakers: Wakers,
     request: IncomingRequest,
@@ -64,7 +68,7 @@ async fn handle_async(
 
             let response = types::new_outgoing_response(
                 200,
-                types::new_fields(&[("content-type", b"text/plain")]),
+                types::new_fields(&[("content-type".to_string(), b"text/plain".to_vec())]),
             )?;
 
             types::set_response_outparam(response_out, Ok(response))
@@ -93,7 +97,7 @@ async fn handle_async(
                     &headers
                         .iter()
                         .filter_map(|(k, v)| {
-                            (k == "content-type").then_some((k.deref(), v.deref()))
+                            (k == "content-type").then_some((k.clone(), v.clone()))
                         })
                         .collect::<Vec<_>>(),
                 ),

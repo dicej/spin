@@ -90,7 +90,7 @@ impl wasi_http::wasi::http::types_keyvalue::Host for WasiCloud {
     async fn outgoing_value_write_body_sync(
         &mut self,
         outgoing_value: OutgoingValue,
-        valueL: Vec<u8>,
+        value: Vec<u8>,
     ) -> Result<Result<(), Error>, anyhow::Error> {
         todo!()
     }
