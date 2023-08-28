@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
+use redis::{Client as RedisClient, Connection};
 use reqwest::Client;
 use spin_common::table::Table;
 use spin_core::HostComponent;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Notify;
-use wasi_http::wasi::http::types2 as types;
+use wasi_http::wasi::http::{types2 as types, readwrite::Bucket};
 use wasi_messaging::wasi::messaging::messaging_types;
 
 pub mod http;
@@ -54,6 +55,20 @@ struct WasiMessaging {
     errors: Table<messaging::Error>,
 }
 
+
+pub struct WasiKeyvalue {
+    pub client: RedisClient,
+}
+
+impl Default for WasiKeyvalue {
+    fn default() -> Self {
+        Self {
+            client: RedisClient::open("redis://localhost:6379")
+                .expect("failed to connect to redis")
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct WasiCloud {
     incoming_requests: Table<http::IncomingRequest>,
@@ -71,6 +86,11 @@ pub struct WasiCloud {
     notify: Arc<Notify>,
     http_client: Client,
     messaging: WasiMessaging,
+    keyvalue: WasiKeyvalue,
+    buckets: Table<keyvalue::Bucket>,
+    keyvalue_errors: Table<keyvalue::Error>,
+    outgoing_value: Table<keyvalue::OutgoingValue>,
+    incoming_value: Table<keyvalue::IncomingValue>,
 }
 
 impl WasiCloud {
