@@ -14,8 +14,8 @@ use wasi_cloud::{
     http::{Fields, IncomingRequest, ResponseOutparam},
     wasi_http::{
         wasi::http::types2::{Method, Scheme},
-        Proxy,
-    },
+        HttpKeyvalue,
+    }
 };
 
 #[derive(Clone)]
@@ -39,7 +39,7 @@ impl HttpExecutor for WasiHttpExecutor {
             unreachable!()
         };
 
-        let proxy = Proxy::new(&mut store, &instance)?;
+        let proxy = HttpKeyvalue::new(&mut store, &instance)?;
 
         let (response_tx, response_rx) = oneshot::channel();
 

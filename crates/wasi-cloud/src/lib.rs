@@ -38,7 +38,7 @@ impl HostComponent for WasiCloudComponent {
         linker: &mut spin_core::Linker<T>,
         get: impl Fn(&mut spin_core::Data<T>) -> &mut Self::Data + Send + Sync + Copy + 'static,
     ) -> anyhow::Result<()> {
-        wasi_http::Proxy::add_to_linker(linker, get)?;
+        wasi_http::HttpKeyvalue::add_to_linker(linker, get)?;
         wasi_messaging::Messaging::add_to_linker(linker, get)
     }
 
