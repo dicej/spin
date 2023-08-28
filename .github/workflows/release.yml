@@ -1,5 +1,6 @@
 name: Release
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -127,7 +128,7 @@ jobs:
         shell: bash
         run: |
           mkdir _dist
-          cp crt.pem spin.sig README.md LICENSE ${{ matrix.config.targetDir }}/spin${{ matrix.config.extension }} _dist/
+          cp -r wit crt.pem spin.sig README.md LICENSE ${{ matrix.config.targetDir }}/spin${{ matrix.config.extension }} _dist/
           cd _dist
           tar czf \
             spin-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz \
@@ -138,7 +139,7 @@ jobs:
         shell: bash
         run: |
           mkdir _dist
-          cp crt.pem spin.sig README.md LICENSE ${{ matrix.config.targetDir }}/spin${{ matrix.config.extension }} _dist/
+          cp -r wit crt.pem spin.sig README.md LICENSE ${{ matrix.config.targetDir }}/spin${{ matrix.config.extension }} _dist/
           cd _dist
           7z a -tzip \
             spin-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.zip \
