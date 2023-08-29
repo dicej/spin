@@ -1,5 +1,5 @@
 use crate::{
-    wasi_messaging::wasi::messaging::{
+    wasi_cloud::wasi::messaging::{
         consumer,
         messaging_types::{self, Channel, FormatSpec, GuestConfiguration, Message},
         producer,

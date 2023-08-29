@@ -1,4 +1,6 @@
-interface types-keyvalue {
+package wasi:keyvalue
+
+interface types {
     use wasi:io/streams2.{input-stream, output-stream}
     /// A bucket is a collection of key-value pairs. Each key-value pair is stored
 	/// as a entry in the bucket, and the bucket itself acts as a collection of all

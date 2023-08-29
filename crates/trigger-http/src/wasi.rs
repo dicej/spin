@@ -12,9 +12,9 @@ use std::{
 use tokio::task;
 use wasi_cloud::{
     http::{Fields, IncomingRequest, ResponseOutparam},
-    wasi_http::{
+    wasi_cloud::{
         wasi::http::types2::{Method, Scheme},
-        HttpKeyvalue,
+        WasiCloudCore,
     },
 };
 
@@ -39,7 +39,7 @@ impl HttpExecutor for WasiHttpExecutor {
             unreachable!()
         };
 
-        let proxy = HttpKeyvalue::new(&mut store, &instance)?;
+        let proxy = WasiCloudCore::new(&mut store, &instance)?;
 
         let (response_tx, response_rx) = oneshot::channel();
 

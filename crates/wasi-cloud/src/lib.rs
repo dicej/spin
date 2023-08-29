@@ -1,12 +1,11 @@
+use crate::wasi_cloud::wasi::{http::types2 as types, messaging::messaging_types};
 use anyhow::{anyhow, Result};
-use redis::{Client as RedisClient, Connection};
+use redis::Client as RedisClient;
 use reqwest::Client;
 use spin_common::table::Table;
 use spin_core::HostComponent;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Notify;
-use wasi_http::wasi::http::{types2 as types, readwrite::Bucket};
-use wasi_messaging::wasi::messaging::messaging_types;
 
 pub mod http;
 mod keyvalue;
@@ -14,18 +13,18 @@ mod messaging;
 mod poll;
 mod streams;
 
-pub mod wasi_http {
+pub mod wasi_cloud {
     wasmtime::component::bindgen!({
-        path: "../../wit/wasi-http",
-        world: "http-keyvalue",
+        path: "../../wit/preview2",
+        world: "fermyon:worlds/wasi-cloud-core",
         async: true
     });
 }
 
 pub mod wasi_messaging {
     wasmtime::component::bindgen!({
-        path: "../../wit/wasi-messaging/wit",
-        world: "messaging",
+        path: "../../wit/preview2",
+        world: "wasi:messaging/messaging",
         async: true
     });
 }
@@ -39,8 +38,7 @@ impl HostComponent for WasiCloudComponent {
         linker: &mut spin_core::Linker<T>,
         get: impl Fn(&mut spin_core::Data<T>) -> &mut Self::Data + Send + Sync + Copy + 'static,
     ) -> anyhow::Result<()> {
-        wasi_http::HttpKeyvalue::add_to_linker(linker, get)?;
-        wasi_messaging::Messaging::add_to_linker(linker, get)
+        wasi_cloud::WasiCloudCore::add_to_linker(linker, get)
     }
 
     fn build_data(&self) -> Self::Data {
@@ -55,7 +53,6 @@ struct WasiMessaging {
     errors: Table<messaging::Error>,
 }
 
-
 pub struct WasiKeyvalue {
     pub client: RedisClient,
 }
@@ -64,7 +61,7 @@ impl Default for WasiKeyvalue {
     fn default() -> Self {
         Self {
             client: RedisClient::open("redis://localhost:6379")
-                .expect("failed to connect to redis")
+                .expect("failed to connect to redis"),
         }
     }
 }

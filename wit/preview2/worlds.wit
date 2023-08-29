@@ -1,0 +1,44 @@
+package fermyon:worlds
+
+world reactor {
+  import fermyon:spin/config
+  import fermyon:spin/postgres
+  import fermyon:spin/mysql
+  import fermyon:spin/sqlite
+  import fermyon:spin/redis
+  import fermyon:spin/key-value
+  import fermyon:spin/http
+  export fermyon:spin/inbound-http
+  export fermyon:spin/inbound-redis
+}
+
+world redis-trigger {
+  import fermyon:spin/config
+  import fermyon:spin/postgres
+  import fermyon:spin/mysql
+  import fermyon:spin/sqlite
+  import fermyon:spin/redis
+  import fermyon:spin/key-value
+  import fermyon:spin/http
+  export fermyon:spin/inbound-redis
+}
+
+world http-trigger {
+  import fermyon:spin/config
+  import fermyon:spin/postgres
+  import fermyon:spin/mysql
+  import fermyon:spin/sqlite
+  import fermyon:spin/redis
+  import fermyon:spin/key-value
+  import fermyon:spin/http
+  export fermyon:spin/inbound-http
+}
+
+world wasi-cloud-core {
+  import wasi:keyvalue/readwrite
+  import wasi:messaging/producer
+  import wasi:messaging/consumer
+  import wasi:http/outgoing-handler2
+
+  export wasi:http/incoming-handler2
+}

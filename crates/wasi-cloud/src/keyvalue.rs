@@ -3,12 +3,11 @@ use redis::AsyncCommands;
 use spin_core::async_trait;
 
 use crate::{
-    wasi_http::{
+    wasi_cloud::{
         self,
-        wasi::http::{
-            readwrite,
-            readwrite::Key,
-            types_keyvalue::{IncomingValueAsyncBody, IncomingValueSyncBody, OutputStream},
+        wasi::keyvalue::{
+            readwrite::{self, Key},
+            types::{IncomingValueAsyncBody, IncomingValueSyncBody, OutputStream},
         },
     },
     WasiCloud,
@@ -33,7 +32,7 @@ pub struct IncomingValue {
 }
 
 #[async_trait]
-impl crate::wasi_http::wasi::http::readwrite::Host for WasiCloud {
+impl wasi_cloud::wasi::keyvalue::readwrite::Host for WasiCloud {
     async fn get(
         &mut self,
         bucket: readwrite::Bucket,
@@ -51,13 +50,11 @@ impl crate::wasi_http::wasi::http::readwrite::Host for WasiCloud {
             .incoming_value
             .push(IncomingValue { body: value })
             .map_err(|_| {
-                let error_resource = self
-                    .keyvalue_errors
+                self.keyvalue_errors
                     .push(Error {
                         message: "table overflow".into(),
                     })
-                    .unwrap();
-                error_resource
+                    .unwrap()
             });
         Ok(incoming_value)
     }
@@ -119,7 +116,7 @@ impl crate::wasi_http::wasi::http::readwrite::Host for WasiCloud {
 }
 
 #[async_trait]
-impl wasi_http::wasi::http::wasi_cloud_error::Host for WasiCloud {
+impl wasi_cloud::wasi::keyvalue::wasi_cloud_error::Host for WasiCloud {
     async fn drop_error(&mut self, error: readwrite::Error) -> Result<(), anyhow::Error> {
         self.keyvalue_errors
             .remove(error)
@@ -138,7 +135,7 @@ impl wasi_http::wasi::http::wasi_cloud_error::Host for WasiCloud {
 }
 
 #[async_trait]
-impl wasi_http::wasi::http::types_keyvalue::Host for WasiCloud {
+impl wasi_cloud::wasi::keyvalue::types::Host for WasiCloud {
     async fn drop_bucket(&mut self, bucket: readwrite::Bucket) -> Result<(), anyhow::Error> {
         self.buckets
             .remove(bucket)
@@ -151,13 +148,11 @@ impl wasi_http::wasi::http::types_keyvalue::Host for WasiCloud {
         name: String,
     ) -> Result<Result<readwrite::Bucket, readwrite::Error>, anyhow::Error> {
         let bucket_resource = self.buckets.push(Bucket { name }).map_err(|_| {
-            let error_resource = self
-                .keyvalue_errors
+            self.keyvalue_errors
                 .push(Error {
                     message: "table overflow".into(),
                 })
-                .unwrap();
-            error_resource
+                .unwrap()
         });
         Ok(bucket_resource)
     }

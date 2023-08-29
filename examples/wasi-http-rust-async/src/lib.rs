@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
-    world: "proxy",
-    path: "../../wit/wasi-http",
+    world: "wasi:http/proxy",
+    path: "../../wit/preview2",
     exports: {
         "wasi:http/incoming-handler2": Component
     }
@@ -20,7 +20,7 @@ use {
     anyhow::{anyhow, bail, Error, Result},
     futures::{future, sink, stream, FutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt},
     sha2::{Digest, Sha256},
-    std::{future::Future, ops::Deref, str, task::Poll},
+    std::{future::Future, str, task::Poll},
     url::Url,
     wakers::Wakers,
 };

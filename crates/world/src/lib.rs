@@ -2,7 +2,7 @@
 
 wasmtime::component::bindgen!({
     path: "../../wit/preview2",
-    world: "reactor",
+    world: "fermyon:worlds/reactor",
     async: true
 });
 

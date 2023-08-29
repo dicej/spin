@@ -1,7 +1,7 @@
 /// A keyvalue interface that provides simple read and write operations.
 interface readwrite {
 	/// A keyvalue interface that provides simple read and write operations.
-	use types-keyvalue.{bucket, error, incoming-value, key, outgoing-value}
+	use types.{bucket, error, incoming-value, key, outgoing-value}
 	
 	/// Get the value associated with the key in the bucket. It returns a incoming-value
 	/// that can be consumed to get the value.
@@ -23,9 +23,4 @@ interface readwrite {
 
 	/// Check if the key exists in the bucket.
 	exists: func(bucket: bucket, key: key) -> result<bool, error>
-}
-
-
-world keyvalue {
-	import readwrite
 }

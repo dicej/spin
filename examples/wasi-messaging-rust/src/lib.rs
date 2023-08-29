@@ -1,4 +1,4 @@
-wit_bindgen::generate!("messaging" in "../../wit/wasi-messaging/wit");
+wit_bindgen::generate!("wasi:messaging/messaging" in "../../wit/preview2");
 
 use {
     crate::{
