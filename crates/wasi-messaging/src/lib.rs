@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{future, stream::FuturesUnordered, SinkExt, TryStreamExt};
+use futures::{future, stream::FuturesUnordered, SinkExt, StreamExt, TryStreamExt};
 use redis_protocol::resp3::{decode, encode, types::Frame};
 use serde::{Deserialize, Serialize};
 use spin_core::async_trait;
@@ -13,6 +13,9 @@ use wasi_cloud::wasi_messaging::{
     wasi::messaging::messaging_types::{Error, FormatSpec, Message},
     Messaging,
 };
+
+// Maximum number of messages to deliver to an instance at a time:
+const MAX_CHUNK_LENGTH: usize = 32;
 
 pub(crate) type RuntimeData = ();
 pub(crate) type Store = spin_core::Store<RuntimeData>;
@@ -97,8 +100,8 @@ impl WasiMessagingTrigger {
     async fn run_component(&self, component: &str) -> Result<()> {
         let (instance, mut store) = self.engine.prepare_instance(component).await?;
         let EitherInstance::Component(instance) = instance else {
-                    unreachable!()
-                };
+            unreachable!()
+        };
 
         let messaging = Messaging::new(&mut store, &instance)?;
 
@@ -154,55 +157,62 @@ impl WasiMessagingTrigger {
                 .await?;
         }
 
-        while let Some(frame) = connection.try_next().await? {
-            let unexpected = || Err(anyhow!("don't know how to handle frame: {frame:?}"));
+        let mut connection = connection.ready_chunks(MAX_CHUNK_LENGTH);
 
-            match &frame {
-                Frame::Array { data, .. } => match data.as_slice() {
-                    [Frame::BlobString { data, .. }, Frame::BlobString { .. }, Frame::Number { .. }]
-                        if data.deref() == b"subscribe" => {}
+        while let Some(frames) = connection.next().await {
+            let mut messages = Vec::new();
+            for frame in frames {
+                let frame = frame?;
 
-                    [Frame::BlobString { data: data1, .. }, Frame::BlobString { data: data2, .. }, Frame::BlobString { data: data3, .. }] => {
-                        match (data1.deref(), data2.deref(), data3.deref()) {
-                            (b"message", channel, body) => {
-                                let channel = str::from_utf8(channel)?;
-                                tracing::trace!(
-                                    "got message on channel {channel}: {}",
-                                    String::from_utf8_lossy(body)
-                                );
+                let unexpected = || Err(anyhow!("don't know how to handle frame: {frame:?}"));
 
-                                let (instance, mut store) =
-                                    self.engine.prepare_instance(component).await?;
+                match &frame {
+                    Frame::Array { data, .. } => match data.as_slice() {
+                        [Frame::BlobString { data, .. }, Frame::BlobString { .. }, Frame::Number { .. }]
+                            if data.deref() == b"subscribe" => {}
 
-                                let EitherInstance::Component(instance) = instance else {
-                                    unreachable!()
-                                };
+                        [Frame::BlobString { data: data1, .. }, Frame::BlobString { data: data2, .. }, Frame::BlobString { data: data3, .. }] => {
+                            match (data1.deref(), data2.deref(), data3.deref()) {
+                                (b"message", channel, body) => {
+                                    let channel = str::from_utf8(channel)?;
+                                    tracing::trace!(
+                                        "got message on channel {channel}: {}",
+                                        String::from_utf8_lossy(body)
+                                    );
 
-                                let messaging = Messaging::new(&mut store, &instance)?;
-
-                                let result = messaging
-                                    .wasi_messaging_messaging_guest()
-                                    .call_handler(
-                                        &mut store,
-                                        &[Message {
-                                            data: body.to_owned(),
-                                            format: FormatSpec::Raw,
-                                            metadata: Some(vec![(
-                                                "channel".to_owned(),
-                                                channel.to_owned(),
-                                            )]),
-                                        }],
-                                    )
-                                    .await?;
-
-                                check_error(&mut store, &self.engine, result)?;
+                                    messages.push(Message {
+                                        data: body.to_owned(),
+                                        format: FormatSpec::Raw,
+                                        metadata: Some(vec![(
+                                            "channel".to_owned(),
+                                            channel.to_owned(),
+                                        )]),
+                                    });
+                                }
+                                _ => return unexpected(),
                             }
-                            _ => return unexpected(),
                         }
-                    }
+                        _ => return unexpected(),
+                    },
                     _ => return unexpected(),
-                },
-                _ => return unexpected(),
+                }
+            }
+
+            if !messages.is_empty() {
+                let (instance, mut store) = self.engine.prepare_instance(component).await?;
+
+                let EitherInstance::Component(instance) = instance else {
+                    unreachable!()
+                };
+
+                let messaging = Messaging::new(&mut store, &instance)?;
+
+                let result = messaging
+                    .wasi_messaging_messaging_guest()
+                    .call_handler(&mut store, &messages)
+                    .await?;
+
+                check_error(&mut store, &self.engine, result)?;
             }
         }
 
