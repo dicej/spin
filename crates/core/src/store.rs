@@ -209,7 +209,10 @@ impl StoreBuilder {
                 ctx.set_stdout(Box::new(wasi_preview1::pipe::WritePipe::new(w)))
             }
             WasiCtxBuilder::Preview2(ctx) => {
-                ctx.stdout(wasi_preview2::pipe::AsyncWriteStream::new(w), IsATTY::No);
+                ctx.stdout(
+                    wasi_preview2::pipe::AsyncWriteStream::new(16 * 1024, w),
+                    IsATTY::No,
+                );
             }
         })
     }
@@ -250,7 +253,10 @@ impl StoreBuilder {
                 ctx.set_stderr(Box::new(wasi_preview1::pipe::WritePipe::new(w)))
             }
             WasiCtxBuilder::Preview2(ctx) => {
-                ctx.stderr(wasi_preview2::pipe::AsyncWriteStream::new(w), IsATTY::No);
+                ctx.stderr(
+                    wasi_preview2::pipe::AsyncWriteStream::new(16 * 1024, w),
+                    IsATTY::No,
+                );
             }
         })
     }

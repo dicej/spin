@@ -17,7 +17,7 @@ impl OutputBuffer {
 
 impl Default for OutputBuffer {
     fn default() -> Self {
-        Self(MemoryOutputPipe::new())
+        Self(MemoryOutputPipe::new(16 * 1024))
     }
 }
 
