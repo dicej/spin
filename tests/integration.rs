@@ -4,6 +4,7 @@ mod integration_tests {
     use futures::{channel::oneshot, future, stream, FutureExt};
     use http_body_util::BodyExt;
     use hyper::{body::Bytes, server::conn::http1, service::service_fn, Method, StatusCode};
+    use hyper_util::rt::tokio::TokioIo;
     use reqwest::{Client, Response};
     use sha2::{Digest, Sha256};
     use spin_http::body;
@@ -684,7 +685,7 @@ route = "/..."
                         if let Err(e) = http1::Builder::new()
                             .keep_alive(true)
                             .serve_connection(
-                                stream,
+                                TokioIo::new(stream),
                                 service_fn(
                                     move |request: hyper::Request<hyper::body::Incoming>| {
                                         let body = body.clone();
@@ -775,7 +776,7 @@ route = "/..."
                         if let Err(e) = http1::Builder::new()
                             .keep_alive(true)
                             .serve_connection(
-                                stream,
+                                TokioIo::new(stream),
                                 service_fn(move |request| {
                                     let bodies = bodies.clone();
                                     async move {
@@ -920,7 +921,7 @@ route = "/..."
     }
 
     #[tokio::test]
-    async fn test_wasi_http_rc_11_10() -> Result<()> {
+    async fn test_wasi_http_rc_12_05() -> Result<()> {
         let body = b"So rested he by the Tumtum tree";
 
         let listener = tokio::net::TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0)).await?;
@@ -935,7 +936,7 @@ route = "/..."
                         if let Err(e) = http1::Builder::new()
                             .keep_alive(true)
                             .serve_connection(
-                                stream,
+                                TokioIo::new(stream),
                                 service_fn(move |request| async move {
                                     if let &Method::GET = request.method() {
                                         Ok::<_, Error>(hyper::Response::new(body::full(
@@ -976,7 +977,7 @@ route = "/..."
         });
 
         let controller = SpinTestController::with_manifest(
-            "tests/http/wasi-http-rust-0.2.0-rc-2023-11-10/spin.toml",
+            "tests/http/wasi-http-rust-0.2.0-rc-2023-12-05/spin.toml",
             &[],
             &[],
         )

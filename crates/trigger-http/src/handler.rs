@@ -53,7 +53,7 @@ impl HttpExecutor for HttpHandlerExecutor {
             }
             None => bail!(
                 "Expected component to either export `{WASI_HTTP_EXPORT_2023_10_18}`, \
-                 `{WASI_HTTP_EXPORT_2023_11_10}`, or `fermyon:spin/inbound-http` but it exported neither"
+                 `{WASI_HTTP_EXPORT_2023_12_05}`, or `fermyon:spin/inbound-http` but it exported neither"
             )
         };
 
@@ -306,13 +306,13 @@ enum HandlerType {
 }
 
 const WASI_HTTP_EXPORT_2023_10_18: &str = "wasi:http/incoming-handler@0.2.0-rc-2023-10-18";
-const WASI_HTTP_EXPORT_2023_11_10: &str = "wasi:http/incoming-handler@0.2.0-rc-2023-11-10";
+const WASI_HTTP_EXPORT_2023_12_05: &str = "wasi:http/incoming-handler@0.2.0-rc-2023-12-05";
 
 impl HandlerType {
     /// Determine the handler type from the exports
     fn from_exports(mut exports: wasmtime::component::Exports<'_>) -> Option<HandlerType> {
         if exports.instance(WASI_HTTP_EXPORT_2023_10_18).is_some()
-            || exports.instance(WASI_HTTP_EXPORT_2023_11_10).is_some()
+            || exports.instance(WASI_HTTP_EXPORT_2023_12_05).is_some()
         {
             return Some(HandlerType::Wasi);
         }

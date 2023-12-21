@@ -111,8 +111,11 @@ impl<Executor: TriggerExecutor> TriggerExecutorBuilder<Executor> {
             let mut builder = Engine::builder(&self.config)?;
 
             if !self.disable_default_host_components {
-                // Wasmtime 15: WASI@0.2.0-rc-2023-11-10
-                builder.link_import(|l, _| wasmtime_wasi_http::proxy::add_to_linker(l))?;
+                // Wasmtime 16: WASI@0.2.0-rc-2023-12-05
+                builder.link_import(|l, _| {
+                    wasmtime_wasi::preview2::command::add_to_linker(l)?;
+                    wasmtime_wasi_http::proxy::add_only_http_to_linker(l)
+                })?;
 
                 // Wasmtime 14: WASI@0.2.0-rc-2023-10-18
                 builder.link_import(|l, _| spin_core::wasi_2023_10_18::add_to_linker(l))?;

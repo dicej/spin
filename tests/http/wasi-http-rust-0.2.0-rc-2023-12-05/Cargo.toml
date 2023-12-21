@@ -1,5 +1,5 @@
 [package]
-name = "wasi-http-rust-rc-2023-11-10"
+name = "wasi-http-rust-rc-2023-12-05"
 version = "0.1.0"
 edition = "2021"
 
