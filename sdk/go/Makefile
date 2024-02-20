@@ -17,7 +17,7 @@ http/testdata/http-tinygo/main.wasm: http/testdata/http-tinygo/main.go
 # ----------------------------------------------------------------------
 # Build examples
 # ----------------------------------------------------------------------
-EXAMPLES_DIR = ../../examples
+EXAMPLES_DIR = examples
 
 .PHONY: build-examples
 build-examples: generate
