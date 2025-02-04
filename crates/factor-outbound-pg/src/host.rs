@@ -1,5 +1,5 @@
 use anyhow::Result;
-use spin_core::{async_trait, wasmtime::component::Resource};
+use spin_core::wasmtime::component::Resource;
 use spin_world::spin::postgres::postgres::{self as v3};
 use spin_world::v1::postgres as v1;
 use spin_world::v1::rdbms_types as v1_types;
@@ -71,7 +71,6 @@ fn v2_params_to_v3(
     params.into_iter().map(|p| p.try_into()).collect()
 }
 
-#[async_trait]
 impl<C: Send + Sync + Client> spin_world::spin::postgres::postgres::HostConnection
     for InstanceState<C>
 {
@@ -155,10 +154,8 @@ macro_rules! delegate {
     }};
 }
 
-#[async_trait]
 impl<C: Send + Sync + Client> v2::Host for InstanceState<C> {}
 
-#[async_trait]
 impl<C: Send + Sync + Client> v2::HostConnection for InstanceState<C> {
     #[instrument(name = "spin_outbound_pg.open", skip(self, address), err(level = Level::INFO), fields(otel.kind = "client", db.system = "postgresql", db.address = Empty, server.port = Empty, db.namespace = Empty))]
     async fn open(&mut self, address: String) -> Result<Resource<v2::Connection>, v2::Error> {
@@ -211,7 +208,6 @@ impl<C: Send + Sync + Client> v2::HostConnection for InstanceState<C> {
     }
 }
 
-#[async_trait]
 impl<C: Send + Sync + Client> v1::Host for InstanceState<C> {
     async fn execute(
         &mut self,

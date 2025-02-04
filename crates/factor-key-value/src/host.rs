@@ -103,10 +103,8 @@ impl KeyValueDispatch {
     }
 }
 
-#[async_trait]
 impl key_value::Host for KeyValueDispatch {}
 
-#[async_trait]
 impl key_value::HostStore for KeyValueDispatch {
     #[instrument(name = "spin_key_value.open", skip(self), err(level = Level::INFO), fields(otel.kind = "client", kv.backend=self.manager.summary(&name).unwrap_or("unknown".to_string())))]
     async fn open(&mut self, name: String) -> Result<Result<Resource<key_value::Store>, Error>> {
@@ -191,7 +189,6 @@ fn to_wasi_err(e: Error) -> wasi_keyvalue::store::Error {
     }
 }
 
-#[async_trait]
 impl wasi_keyvalue::store::Host for KeyValueDispatch {
     async fn open(
         &mut self,
@@ -219,7 +216,6 @@ impl wasi_keyvalue::store::Host for KeyValueDispatch {
 }
 
 use wasi_keyvalue::store::Bucket;
-#[async_trait]
 impl wasi_keyvalue::store::HostBucket for KeyValueDispatch {
     async fn get(
         &mut self,
@@ -281,7 +277,6 @@ impl wasi_keyvalue::store::HostBucket for KeyValueDispatch {
     }
 }
 
-#[async_trait]
 impl wasi_keyvalue::batch::Host for KeyValueDispatch {
     #[instrument(name = "spin_key_value.get_many", skip(self, bucket, keys), err(level = Level::INFO), fields(otel.kind = "client"))]
     async fn get_many(
@@ -323,7 +318,6 @@ impl wasi_keyvalue::batch::Host for KeyValueDispatch {
     }
 }
 
-#[async_trait]
 impl wasi_keyvalue::atomics::HostCas for KeyValueDispatch {
     async fn new(
         &mut self,
@@ -363,7 +357,6 @@ impl wasi_keyvalue::atomics::HostCas for KeyValueDispatch {
     }
 }
 
-#[async_trait]
 impl wasi_keyvalue::atomics::Host for KeyValueDispatch {
     fn convert_cas_error(
         &mut self,
@@ -439,7 +432,6 @@ fn to_legacy_error(value: key_value::Error) -> LegacyError {
     }
 }
 
-#[async_trait]
 impl spin_world::v1::key_value::Host for KeyValueDispatch {
     async fn open(&mut self, name: String) -> Result<Result<u32, LegacyError>> {
         let result = <Self as key_value::HostStore>::open(self, name).await?;

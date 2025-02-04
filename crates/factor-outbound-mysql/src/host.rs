@@ -1,5 +1,4 @@
 use anyhow::Result;
-use spin_core::async_trait;
 use spin_core::wasmtime::component::Resource;
 use spin_world::v1::mysql as v1;
 use spin_world::v2::mysql::{self as v2, Connection};
@@ -34,10 +33,8 @@ impl<C: Client> InstanceState<C> {
     }
 }
 
-#[async_trait]
 impl<C: Client> v2::Host for InstanceState<C> {}
 
-#[async_trait]
 impl<C: Client> v2::HostConnection for InstanceState<C> {
     #[instrument(name = "spin_outbound_mysql.open", skip(self, address), err(level = Level::INFO), fields(otel.kind = "client", db.system = "mysql", db.address = Empty, server.port = Empty, db.namespace = Empty))]
     async fn open(&mut self, address: String) -> Result<Resource<Connection>, v2::Error> {
@@ -113,7 +110,6 @@ macro_rules! delegate {
     }};
 }
 
-#[async_trait]
 impl<C: Client> v1::Host for InstanceState<C> {
     async fn execute(
         &mut self,
