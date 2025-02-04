@@ -16,8 +16,8 @@ use spin_factors::{
     RuntimeFactors, RuntimeFactorsInstanceState,
 };
 use wasmtime_wasi::{
-    DirPerms, FilePerms, ResourceTable, StdinStream, StdoutStream, WasiCtx, WasiCtxBuilder,
-    WasiImpl, WasiView,
+    DirPerms, FilePerms, IoImpl, IoView, ResourceTable, StdinStream, StdoutStream, WasiCtx,
+    WasiCtxBuilder, WasiImpl, WasiView,
 };
 
 pub use wasmtime_wasi::SocketAddrUse;
@@ -37,10 +37,10 @@ impl WasiFactor {
         runtime_instance_state: &mut impl RuntimeFactorsInstanceState,
     ) -> Option<WasiImpl<impl WasiView + '_>> {
         let (state, table) = runtime_instance_state.get_with_table::<WasiFactor>()?;
-        Some(WasiImpl(WasiImplInner {
+        Some(WasiImpl(IoImpl(WasiImplInner {
             ctx: &mut state.ctx,
             table,
-        }))
+        })))
     }
 }
 
@@ -50,29 +50,36 @@ impl Factor for WasiFactor {
     type InstanceBuilder = InstanceBuilder;
 
     fn init<T: Send + 'static>(&mut self, mut ctx: InitContext<T, Self>) -> anyhow::Result<()> {
-        fn type_annotate<T, F>(f: F) -> F
+        fn type_annotate_wasi<T, F>(f: F) -> F
         where
             F: Fn(&mut T) -> WasiImpl<WasiImplInner>,
         {
             f
         }
+        fn type_annotate_io<T, F>(f: F) -> F
+        where
+            F: Fn(&mut T) -> IoImpl<WasiImplInner>,
+        {
+            f
+        }
         let get_data_with_table = ctx.get_data_with_table_fn();
-        let closure = type_annotate(move |data| {
+        let closure_io = type_annotate_io(move |data| {
             let (state, table) = get_data_with_table(data);
-            WasiImpl(WasiImplInner {
+            IoImpl(WasiImplInner {
                 ctx: &mut state.ctx,
                 table,
             })
         });
+        let closure = type_annotate_wasi(move |data| WasiImpl(closure_io(data)));
         let linker = ctx.linker();
         use wasmtime_wasi::bindings;
         bindings::clocks::wall_clock::add_to_linker_get_host(linker, closure)?;
         bindings::clocks::monotonic_clock::add_to_linker_get_host(linker, closure)?;
         bindings::filesystem::types::add_to_linker_get_host(linker, closure)?;
         bindings::filesystem::preopens::add_to_linker_get_host(linker, closure)?;
-        bindings::io::error::add_to_linker_get_host(linker, closure)?;
-        bindings::io::poll::add_to_linker_get_host(linker, closure)?;
-        bindings::io::streams::add_to_linker_get_host(linker, closure)?;
+        bindings::io::error::add_to_linker_get_host(linker, closure_io)?;
+        bindings::io::poll::add_to_linker_get_host(linker, closure_io)?;
+        bindings::io::streams::add_to_linker_get_host(linker, closure_io)?;
         bindings::random::random::add_to_linker_get_host(linker, closure)?;
         bindings::random::insecure::add_to_linker_get_host(linker, closure)?;
         bindings::random::insecure_seed::add_to_linker_get_host(linker, closure)?;
@@ -288,7 +295,9 @@ impl WasiView for WasiImplInner<'_> {
     fn ctx(&mut self) -> &mut WasiCtx {
         self.ctx
     }
+}
 
+impl IoView for WasiImplInner<'_> {
     fn table(&mut self) -> &mut ResourceTable {
         self.table
     }
