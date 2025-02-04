@@ -13,6 +13,8 @@ anyhow = { workspace = true }
 spin-app = { path = "../app" }
 spin-core = { path = "../core" }
 spin-factors = { path = "../factors" }
+wasi-http-draft = { path = "../../http" }
+wasmtime = { workspace = true, features = ["component-model-async"] }
 
 [dev-dependencies]
 spin-factor-wasi = { path = "../factor-wasi" }

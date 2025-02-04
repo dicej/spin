@@ -26,6 +26,7 @@ impl<T: RuntimeFactors, U: Send + 'static> FactorsExecutor<T, U> {
         >,
         mut factors: T,
     ) -> anyhow::Result<Self> {
+        wasi_http_draft::add_to_linker(core_engine_builder.linker())?;
         factors
             .init(core_engine_builder.linker())
             .context("failed to initialize factors")?;
@@ -236,6 +237,7 @@ impl<T: RuntimeFactors, U: Send> FactorsInstanceBuilder<'_, T, U> {
             core: Default::default(),
             factors: self.factors.build_instance_state(self.factor_builders)?,
             executor: executor_instance_state,
+            table: Default::default(),
         };
         let mut store = self.store_builder.build(instance_state)?;
         let instance = self.instance_pre.instantiate_async(&mut store).await?;
@@ -251,6 +253,37 @@ pub struct InstanceState<T, U> {
     core: spin_core::State,
     factors: T,
     executor: U,
+    table: wasmtime::component::ResourceTable,
+}
+
+impl<T: Send, U: Send> wasi_http_draft::WasiHttpView for InstanceState<T, U> {
+    type Data = Self;
+
+    fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
+        &mut self.table
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    fn send_request(
+        _store: wasmtime::StoreContextMut<'_, Self::Data>,
+        _request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
+    ) -> impl std::future::Future<
+        Output = impl FnOnce(
+            wasmtime::StoreContextMut<'_, Self::Data>,
+        ) -> wasmtime::Result<
+            Result<
+                wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Response>,
+                wasi_http_draft::wasi::http::types::ErrorCode,
+            >,
+        > + 'static,
+    > + Send
+           + 'static {
+        async move {
+            move |_: wasmtime::StoreContextMut<'_, Self>| {
+                Err(anyhow::anyhow!("no outbound request handler available"))
+            }
+        }
+    }
 }
 
 impl<T, U> InstanceState<T, U> {

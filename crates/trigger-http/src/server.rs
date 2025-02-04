@@ -269,6 +269,7 @@ impl<F: RuntimeFactors> HttpServer<F> {
                         .execute(instance_builder, &route_match, req, client_addr)
                         .await
                 }
+                HandlerType::Wasi0_3 => todo!(),
                 HandlerType::Wasi0_2
                 | HandlerType::Wasi2023_11_10
                 | HandlerType::Wasi2023_10_18 => {

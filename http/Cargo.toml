@@ -1,0 +1,10 @@
+[package]
+name = "wasi-http-draft"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+wasmtime = { git = "https://github.com/bytecodealliance/wasip3-prototyping", features = ["component-model-async"] }

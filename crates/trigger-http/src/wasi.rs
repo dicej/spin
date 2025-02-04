@@ -94,6 +94,7 @@ impl HttpExecutor for WasiHttpExecutor {
                 Handler::Handler2023_11_10(guest)
             }
             HandlerType::Wasi0_2 => Handler::Latest(Proxy::new(&mut store, &instance)?),
+            HandlerType::Wasi0_3 => todo!(),
             HandlerType::Spin => unreachable!("should have used SpinHttpExecutor"),
             HandlerType::Wagi => unreachable!("should have used WagiExecutor instead"),
         };

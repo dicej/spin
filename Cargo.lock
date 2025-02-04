@@ -8018,6 +8018,8 @@ dependencies = [
  "spin-factors",
  "spin-factors-test",
  "tokio",
+ "wasi-http-draft",
+ "wasmtime",
 ]
 
 [[package]]
@@ -9888,6 +9890,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
+name = "wasi-http-draft"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "wasmtime",
+]
+
+[[package]]
 name = "wasite"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10023,7 +10034,7 @@ dependencies = [
 [[package]]
 name = "wasm-encoder"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.224.0",
@@ -10198,7 +10209,7 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "bitflags 2.6.0",
  "hashbrown 0.15.2",
@@ -10220,7 +10231,7 @@ dependencies = [
 [[package]]
 name = "wasmprinter"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "anyhow",
  "termcolor",
@@ -10240,6 +10251,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "encoding_rs",
+ "futures",
  "fxprof-processed-profile",
  "gimli",
  "hashbrown 0.15.2",
@@ -10543,7 +10555,7 @@ dependencies = [
 [[package]]
 name = "wast"
 version = "224.0.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "bumpalo",
  "leb128fmt",
@@ -10555,7 +10567,7 @@ dependencies = [
 [[package]]
 name = "wat"
 version = "1.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "wast 224.0.0",
 ]
@@ -11169,7 +11181,7 @@ dependencies = [
 [[package]]
 name = "wit-parser"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -11498,24 +11510,24 @@ dependencies = [
 [[patch.unused]]
 name = "wasm-metadata"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 
 [[patch.unused]]
 name = "wasm-mutate"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 
 [[patch.unused]]
 name = "wasm-smith"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 
 [[patch.unused]]
 name = "wasm-wave"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
 
 [[patch.unused]]
 name = "wit-component"
 version = "0.224.0"
-source = "git+https://github.com/bytecodealliance/wasm-tools#7761cdf02d70eecd5104bec241f000966492ddf7"
+source = "git+https://github.com/bytecodealliance/wasm-tools?rev=7761cdf02d70eecd5104bec241f000966492ddf7#7761cdf02d70eecd5104bec241f000966492ddf7"
