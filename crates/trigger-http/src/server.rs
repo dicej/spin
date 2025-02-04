@@ -37,6 +37,7 @@ use crate::{
     spin::SpinHttpExecutor,
     wagi::WagiHttpExecutor,
     wasi::WasiHttpExecutor,
+    wasip3::Wasip3HttpExecutor,
     Body, NotFoundRouteKind, TlsConfig, TriggerApp, TriggerInstanceBuilder,
 };
 
@@ -266,6 +267,11 @@ impl<F: RuntimeFactors> HttpServer<F> {
             HttpExecutorType::Http => match handler_type {
                 HandlerType::Spin => {
                     SpinHttpExecutor
+                        .execute(instance_builder, &route_match, req, client_addr)
+                        .await
+                }
+                HandlerType::Wasi0_3 => {
+                    Wasip3HttpExecutor
                         .execute(instance_builder, &route_match, req, client_addr)
                         .await
                 }

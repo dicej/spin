@@ -11,6 +11,7 @@ use spin_http::routes::RouteMatch;
 use spin_http::trigger::HandlerType;
 use tokio::{sync::oneshot, task};
 use tracing::{instrument, Instrument, Level};
+use wasmtime_wasi::IoView;
 use wasmtime_wasi_http::bindings::http::types::Scheme;
 use wasmtime_wasi_http::{bindings::Proxy, body::HyperIncomingBody as Body, WasiHttpView};
 
@@ -93,6 +94,7 @@ impl HttpExecutor for WasiHttpExecutor {
                 Handler::Handler2023_11_10(guest)
             }
             HandlerType::Wasi0_2 => Handler::Latest(Proxy::new(&mut store, &instance)?),
+            HandlerType::Wasi0_3 => unreachable!("should have used Wasip3HttpExecutor"),
             HandlerType::Spin => unreachable!("should have used SpinHttpExecutor"),
             HandlerType::Wagi => unreachable!("should have used WagiExecutor instead"),
         };

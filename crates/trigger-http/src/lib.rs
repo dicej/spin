@@ -8,6 +8,7 @@ mod spin;
 mod tls;
 mod wagi;
 mod wasi;
+mod wasip3;
 
 use std::{
     error::Error,

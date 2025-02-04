@@ -9,6 +9,7 @@ use spin_factor_outbound_networking::{ComponentTlsConfigs, OutboundAllowedHosts}
 use spin_factors::{wasmtime::component::ResourceTable, RuntimeFactorsInstanceState};
 use tokio::{net::TcpStream, time::timeout};
 use tracing::{field::Empty, instrument, Instrument};
+use wasmtime_wasi::{IoImpl, IoView};
 use wasmtime_wasi_http::{
     bindings::http::types::ErrorCode,
     body::HyperOutgoingBody,
@@ -34,7 +35,7 @@ pub(crate) fn add_to_linker<T: Send + 'static>(
     let get_data_with_table = ctx.get_data_with_table_fn();
     let closure = type_annotate(move |data| {
         let (state, table) = get_data_with_table(data);
-        WasiHttpImpl(WasiHttpImplInner { state, table })
+        WasiHttpImpl(IoImpl(WasiHttpImplInner { state, table }))
     });
     let linker = ctx.linker();
     wasmtime_wasi_http::bindings::http::outgoing_handler::add_to_linker_get_host(linker, closure)?;
@@ -43,7 +44,39 @@ pub(crate) fn add_to_linker<T: Send + 'static>(
     wasi_2023_10_18::add_to_linker(linker, closure)?;
     wasi_2023_11_10::add_to_linker(linker, closure)?;
 
+    fn type_annotate_draft<T, F>(val: F) -> F
+    where
+        F: Fn(&mut T) -> wasi_http_draft::WasiHttpImpl<WasiHttpImplInner>,
+    {
+        val
+    }
+
+    let closure = type_annotate_draft(move |data| {
+        let (state, table) = get_data_with_table(data);
+        wasi_http_draft::WasiHttpImpl(WasiHttpImplInner { state, table })
+    });
+    wasi_http_draft::wasi::http::types::add_to_linker_get_host(linker, closure)?;
+
     Ok(())
+}
+
+impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
+    fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
+        self.table
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    async fn send_request<T>(
+        _accessor: &mut wasmtime::component::Accessor<T, Self>,
+        _request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
+    ) -> wasmtime::Result<
+        Result<
+            wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Response>,
+            wasi_http_draft::wasi::http::types::ErrorCode,
+        >,
+    > {
+        Err(anyhow::anyhow!("no outbound request handler available"))
+    }
 }
 
 impl OutboundHttpFactor {
@@ -51,7 +84,14 @@ impl OutboundHttpFactor {
         runtime_instance_state: &mut impl RuntimeFactorsInstanceState,
     ) -> Option<WasiHttpImpl<impl WasiHttpView + '_>> {
         let (state, table) = runtime_instance_state.get_with_table::<OutboundHttpFactor>()?;
-        Some(WasiHttpImpl(WasiHttpImplInner { state, table }))
+        Some(WasiHttpImpl(IoImpl(WasiHttpImplInner { state, table })))
+    }
+
+    pub fn get_wasi_http_draft_impl(
+        runtime_instance_state: &mut impl RuntimeFactorsInstanceState,
+    ) -> Option<impl wasi_http_draft::WasiHttpView + '_> {
+        let (state, table) = runtime_instance_state.get_with_table::<OutboundHttpFactor>()?;
+        Some(WasiHttpImplInner { state, table })
     }
 }
 
@@ -60,13 +100,15 @@ pub(crate) struct WasiHttpImplInner<'a> {
     table: &'a mut ResourceTable,
 }
 
+impl IoView for WasiHttpImplInner<'_> {
+    fn table(&mut self) -> &mut ResourceTable {
+        self.table
+    }
+}
+
 impl WasiHttpView for WasiHttpImplInner<'_> {
     fn ctx(&mut self) -> &mut WasiHttpCtx {
         &mut self.state.wasi_http_ctx
-    }
-
-    fn table(&mut self) -> &mut ResourceTable {
-        self.table
     }
 
     #[instrument(
