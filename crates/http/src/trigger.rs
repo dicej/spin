@@ -19,6 +19,7 @@ pub enum HandlerType {
     Spin,
     Wagi,
     Wasi0_2,
+    Wasi0_3,
     Wasi2023_11_10,
     Wasi2023_10_18,
 }
@@ -29,6 +30,8 @@ pub const WASI_HTTP_EXPORT_2023_10_18: &str = "wasi:http/incoming-handler@0.2.0-
 pub const WASI_HTTP_EXPORT_2023_11_10: &str = "wasi:http/incoming-handler@0.2.0-rc-2023-11-10";
 /// The `incoming-handler` export prefix for all `wasi:http` 0.2 versions
 pub const WASI_HTTP_EXPORT_0_2_PREFIX: &str = "wasi:http/incoming-handler@0.2";
+/// The `incoming-handler` export prefix for all `wasi:http` 0.3 versions
+pub const WASI_HTTP_EXPORT_0_3_PREFIX: &str = "wasi:http/handler@0.3";
 /// The `inbound-http` export for `fermyon:spin`
 pub const SPIN_HTTP_EXPORT: &str = "fermyon:spin/inbound-http";
 
@@ -58,6 +61,7 @@ impl HandlerType {
                 WASI_HTTP_EXPORT_2023_11_10 => set(HandlerType::Wasi2023_11_10)?,
                 SPIN_HTTP_EXPORT => set(HandlerType::Spin)?,
                 name if name.starts_with(WASI_HTTP_EXPORT_0_2_PREFIX) => set(HandlerType::Wasi0_2)?,
+                name if name.starts_with(WASI_HTTP_EXPORT_0_3_PREFIX) => set(HandlerType::Wasi0_3)?,
                 _ => {}
             }
         }
