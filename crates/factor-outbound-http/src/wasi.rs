@@ -44,7 +44,39 @@ pub(crate) fn add_to_linker<T: Send + 'static>(
     wasi_2023_10_18::add_to_linker(linker, closure)?;
     wasi_2023_11_10::add_to_linker(linker, closure)?;
 
+    fn type_annotate_draft<T, F>(val: F) -> F
+    where
+        F: Fn(&mut T) -> WasiHttpImplInner,
+    {
+        val
+    }
+
+    let closure = type_annotate_draft(move |data| {
+        let (state, table) = get_data_with_table(data);
+        WasiHttpImplInner { state, table }
+    });
+    wasi_http_draft::wasi::http::types::add_to_linker_get_host(linker, closure)?;
+
     Ok(())
+}
+
+impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
+    fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
+        &mut self.table
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    async fn send_request(
+        _accessor: &mut wasmtime::component::Accessor<Self>,
+        _request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
+    ) -> wasmtime::Result<
+        Result<
+            wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Response>,
+            wasi_http_draft::wasi::http::types::ErrorCode,
+        >,
+    > {
+        Err(anyhow::anyhow!("no outbound request handler available"))
+    }
 }
 
 impl OutboundHttpFactor {

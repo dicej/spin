@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 futures = { workspace = true }
-wasmtime = { git = "https://github.com/bytecodealliance/wasip3-prototyping", features = ["component-model-async"] }
+wasmtime = { git = "https://github.com/bytecodealliance/wasip3-prototyping", branch = "dicej/fibers-galore", features = ["component-model-async"] }
