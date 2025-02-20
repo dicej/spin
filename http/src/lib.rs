@@ -661,8 +661,8 @@ pub mod wasi {
                 ) -> wasmtime::Result<Result<wasmtime::component::StreamReader<u8>, ()>>;
                 /// Takes ownership of `body`, and returns a `trailers`.  This function will
                 /// trap if a `stream` child is still alive.
-                fn finish(
-                    accessor: &mut wasmtime::component::Accessor<Self>,
+                fn finish<T>(
+                    accessor: &mut wasmtime::component::Accessor<T, Self>,
                     this: wasmtime::component::Resource<Body>,
                 ) -> impl ::core::future::Future<
                     Output = wasmtime::Result<
@@ -1178,10 +1178,11 @@ pub mod wasi {
 
                 inst.func_wrap_concurrent(
                     "[static]body.finish",
-                    move |caller: wasmtime::StoreContextMut<'_, T>,
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>,
                           (arg0,): (wasmtime::component::Resource<Body>,)| {
                         let mut accessor = unsafe {
-                            wasmtime::component::Accessor::<G::Host>::new(
+                            wasmtime::component::Accessor::<T, G::Host>::new(
+                                caller.inner(),
                                 || FINISH_HOST.with(|v| v.get()).cast(),
                                 |future| FINISH_SPAWNED.with(|v| v.borrow_mut().push(future)),
                             )
@@ -1464,8 +1465,8 @@ pub mod wasi {
                 ///
                 /// When imported, this function may be used to either send an outgoing
                 /// request over the network or pass it to another component.
-                fn handle(
-                    accessor: &mut wasmtime::component::Accessor<Self>,
+                fn handle<T>(
+                    accessor: &mut wasmtime::component::Accessor<T, Self>,
                     request: wasmtime::component::Resource<Request>,
                 ) -> impl ::core::future::Future<
                     Output = wasmtime::Result<
@@ -1569,8 +1570,8 @@ impl fmt::Display for Scheme {
 pub trait WasiHttpView: Send + Sized {
     fn table(&mut self) -> &mut ResourceTable;
 
-    fn send_request(
-        accessor: &mut Accessor<Self>,
+    fn send_request<T>(
+        accessor: &mut Accessor<T, Self>,
         request: Resource<Request>,
     ) -> impl Future<Output = wasmtime::Result<Result<Resource<Response>, ErrorCode>>> + Send + Sync;
 }
@@ -1706,12 +1707,13 @@ impl<T: WasiHttpView> wasi::http::types::HostBody for T {
         Ok(Ok(stream))
     }
 
-    async fn finish(
-        accessor: &mut Accessor<Self>,
+    async fn finish<U>(
+        accessor: &mut Accessor<U, Self>,
         this: Resource<Body>,
     ) -> wasmtime::Result<Result<Option<Resource<Fields>>, ErrorCode>> {
-        let _trailers =
-            accessor.with(|me| Ok::<_, anyhow::Error>(me.table().delete(this)?.trailers))?;
+        let _trailers = accessor.with(|mut access| {
+            Ok::<_, anyhow::Error>(access.get().table().delete(this)?.trailers)
+        })?;
 
         todo!()
     }
@@ -1957,8 +1959,8 @@ impl<T: WasiHttpView> wasi::http::types::Host for T {
 }
 
 impl<T: WasiHttpView> wasi::http::handler::Host for T {
-    async fn handle(
-        accessor: &mut Accessor<Self>,
+    async fn handle<U>(
+        accessor: &mut Accessor<U, Self>,
         request: Resource<Request>,
     ) -> wasmtime::Result<Result<Resource<Response>, ErrorCode>> {
         Self::send_request(accessor, request).await

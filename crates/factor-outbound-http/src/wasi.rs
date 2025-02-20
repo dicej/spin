@@ -66,8 +66,8 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
     }
 
     #[allow(clippy::manual_async_fn)]
-    async fn send_request(
-        _accessor: &mut wasmtime::component::Accessor<Self>,
+    async fn send_request<T>(
+        _accessor: &mut wasmtime::component::Accessor<T, Self>,
         _request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
     ) -> wasmtime::Result<
         Result<
