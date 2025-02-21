@@ -10433,7 +10433,6 @@ dependencies = [
 [[package]]
 name = "wasmtime-wasi"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10463,7 +10462,6 @@ dependencies = [
 [[package]]
 name = "wasmtime-wasi-http"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10485,7 +10483,6 @@ dependencies = [
 [[package]]
 name = "wasmtime-wasi-io"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10686,7 +10683,6 @@ dependencies = [
 [[package]]
 name = "wiggle"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10700,7 +10696,6 @@ dependencies = [
 [[package]]
 name = "wiggle-generate"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "anyhow",
  "heck 0.5.0",
@@ -10714,7 +10709,6 @@ dependencies = [
 [[package]]
 name = "wiggle-macro"
 version = "30.0.0"
-source = "git+https://github.com/bytecodealliance/wasip3-prototyping?branch=dicej/fibers-galore#a9b40bdc8681087250983419380f520ac17085f9"
 dependencies = [
  "proc-macro2",
  "quote",

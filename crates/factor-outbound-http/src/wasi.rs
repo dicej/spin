@@ -86,6 +86,13 @@ impl OutboundHttpFactor {
         let (state, table) = runtime_instance_state.get_with_table::<OutboundHttpFactor>()?;
         Some(WasiHttpImpl(IoImpl(WasiHttpImplInner { state, table })))
     }
+
+    pub fn get_wasi_http_draft_impl(
+        runtime_instance_state: &mut impl RuntimeFactorsInstanceState,
+    ) -> Option<impl wasi_http_draft::WasiHttpView + '_> {
+        let (state, table) = runtime_instance_state.get_with_table::<OutboundHttpFactor>()?;
+        Some(WasiHttpImplInner { state, table })
+    }
 }
 
 pub(crate) struct WasiHttpImplInner<'a> {
