@@ -174,23 +174,24 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
 
         let path = request.path_with_query.unwrap_or_else(|| "/".into());
 
-        let uri = match Uri::builder()
-            .scheme(scheme)
-            .authority(authority.clone())
-            .path_and_query(path)
-            .build()
-        {
-            Ok(uri) => uri,
-            Err(e) => {
-                // TODO: map errors more precisely
-                return Ok(Err(ErrorCode::InternalError(Some(format!("{e:?}")))));
-            }
-        };
-
         let mut builder = hyper::Request::builder()
             .method(method)
-            .header(hyper::header::HOST, &authority)
-            .uri(uri);
+            .header(hyper::header::HOST, &authority);
+
+        builder = builder.uri(
+            match Uri::builder()
+                .scheme(scheme)
+                .authority(authority)
+                .path_and_query(path)
+                .build()
+            {
+                Ok(uri) => uri,
+                Err(e) => {
+                    // TODO: map errors more precisely
+                    return Ok(Err(ErrorCode::InternalError(Some(format!("{e:?}")))));
+                }
+            },
+        );
 
         for (k, v) in &request.headers.0 {
             builder = builder.header(
