@@ -419,8 +419,15 @@ impl<T: WasiHttpView> wasi::http::types::HostRequest for WasiHttpImpl<T> {
         Ok(self.table().push(headers)?)
     }
 
-    fn body(&mut self, _this: Resource<Request>) -> wasmtime::Result<Option<Resource<Body>>> {
-        Err(anyhow!("todo: implement wasi:http/types#request.body"))
+    fn body(&mut self, this: Resource<Request>) -> wasmtime::Result<Option<Resource<Body>>> {
+        // TODO: This should return a child handle
+        Ok(
+            if let Some(body) = self.table().get_mut(&this)?.body.take() {
+                Some(self.table().push(body)?)
+            } else {
+                None
+            },
+        )
     }
 
     fn into_parts(
@@ -481,8 +488,15 @@ impl<T: WasiHttpView> wasi::http::types::HostResponse for WasiHttpImpl<T> {
         Ok(self.table().push(headers)?)
     }
 
-    fn body(&mut self, _this: Resource<Response>) -> wasmtime::Result<Option<Resource<Body>>> {
-        Err(anyhow!("todo: implement wasi:http/types#response.body"))
+    fn body(&mut self, this: Resource<Response>) -> wasmtime::Result<Option<Resource<Body>>> {
+        // TODO: This should return a child handle
+        Ok(
+            if let Some(body) = self.table().get_mut(&this)?.body.take() {
+                Some(self.table().push(body)?)
+            } else {
+                None
+            },
+        )
     }
 
     fn into_parts(
