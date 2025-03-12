@@ -1,18 +1,21 @@
 use std::{error::Error, net::IpAddr, sync::Arc};
 
 use anyhow::{bail, Context};
+use futures::{channel::mpsc, SinkExt};
 use http::{header::HOST, Request};
 use http_body_util::BodyExt;
+use hyper::body::{Bytes, Frame};
 use ip_network::IpNetwork;
 use rustls::ClientConfig;
 use spin_factor_outbound_networking::{ComponentTlsConfigs, OutboundAllowedHosts};
 use spin_factors::{wasmtime::component::ResourceTable, RuntimeFactorsInstanceState};
 use tokio::{net::TcpStream, time::timeout};
 use tracing::{field::Empty, instrument, Instrument};
-use wasmtime_wasi::{IoImpl, IoView};
+use wasmtime::component::{Accessor, AccessorTask, StreamReader, StreamWriter};
+use wasmtime_wasi::{runtime::AbortOnDropJoinHandle, IoImpl, IoView};
 use wasmtime_wasi_http::{
     bindings::http::types::ErrorCode,
-    body::HyperOutgoingBody,
+    body::{HyperIncomingBody, HyperOutgoingBody},
     io::TokioIo,
     types::{HostFutureIncomingResponse, IncomingResponse},
     WasiHttpCtx, WasiHttpImpl, WasiHttpView,
@@ -61,12 +64,56 @@ pub(crate) fn add_to_linker<T: Send + 'static>(
     Ok(())
 }
 
+struct RequestBodyTask {
+    rx: StreamReader<Bytes>,
+    tx: mpsc::Sender<Result<Frame<Bytes>, wasmtime_wasi_http::bindings::http::types::ErrorCode>>,
+}
+
+impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for RequestBodyTask {
+    async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
+        let mut rx = Some(self.rx);
+
+        while let Some(inner_rx) = rx.take() {
+            if let Ok((inner_rx, chunk)) = inner_rx.read().into_future().await {
+                rx = Some(inner_rx);
+                if self.tx.send(Ok(Frame::data(chunk))).await.is_err() {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct ResponseBodyTask {
+    _worker: Option<AbortOnDropJoinHandle<()>>,
+    rx: HyperIncomingBody,
+    tx: StreamWriter<Bytes>,
+}
+
+impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for ResponseBodyTask {
+    async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
+        let mut tx = Some(self.tx);
+
+        while let (Some(Ok(frame)), Some(inner_tx)) = (self.rx.frame().await, tx) {
+            match frame.into_data() {
+                Ok(chunk) => {
+                    tx = inner_tx.write(chunk).into_future().await;
+                }
+                Err(_) => bail!("todo: handle incoming response trailers"),
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
     fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
         self.table
     }
 
-    #[allow(clippy::manual_async_fn)]
     async fn send_request<T: 'static>(
         accessor: &mut wasmtime::component::Accessor<T, Self>,
         request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
@@ -77,21 +124,16 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
         >,
     > {
         use {
-            futures::{channel::mpsc, SinkExt},
             http::{uri, Uri},
             http_body_util::{Empty, StreamBody},
-            hyper::{
-                body::{Bytes, Frame},
-                header::HeaderValue,
-            },
+            hyper::header::HeaderValue,
             std::{ops::DerefMut, time::Duration},
             wasi_http_draft::{
                 wasi::http::types::{Body, ErrorCode, Fields, Method, Response, Scheme},
                 WasiHttpView,
             },
-            wasmtime::component::{self, Accessor, AccessorTask, StreamReader, StreamWriter},
-            wasmtime_wasi::runtime::AbortOnDropJoinHandle,
-            wasmtime_wasi_http::body::HyperIncomingBody,
+            wasmtime::component,
+            wasmtime_wasi_http::types::OutgoingRequestConfig,
         };
 
         let (
@@ -206,30 +248,6 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
             );
         }
 
-        struct RequestBodyTask {
-            rx: StreamReader<Bytes>,
-            tx: mpsc::Sender<
-                Result<Frame<Bytes>, wasmtime_wasi_http::bindings::http::types::ErrorCode>,
-            >,
-        }
-
-        impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for RequestBodyTask {
-            async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
-                let mut rx = Some(self.rx);
-
-                while let Some(inner_rx) = rx.take() {
-                    if let Ok((inner_rx, chunk)) = inner_rx.read().into_future().await {
-                        rx = Some(inner_rx);
-                        if self.tx.send(Ok(Frame::data(chunk))).await.is_err() {
-                            break;
-                        }
-                    }
-                }
-
-                Ok(())
-            }
-        }
-
         let empty = || {
             Empty::<Bytes>::new()
                 .map_err(|_| unreachable!("Infallible error"))
@@ -262,7 +280,7 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
 
         let response = wasmtime_wasi::runtime::spawn(send_request_impl(
             request,
-            wasmtime_wasi_http::types::OutgoingRequestConfig {
+            OutgoingRequestConfig {
                 use_tls,
                 connect_timeout,
                 first_byte_timeout,
@@ -299,47 +317,26 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
                 .collect(),
         );
 
-        struct ResponseBodyTask {
-            _worker: Option<AbortOnDropJoinHandle<()>>,
-            rx: HyperIncomingBody,
-            tx: StreamWriter<Bytes>,
-        }
+        accessor.with(|mut view| {
+            let (tx, rx) = component::stream(&mut view)?;
 
-        impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for ResponseBodyTask {
-            async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
-                let mut tx = Some(self.tx);
+            view.spawn(ResponseBodyTask {
+                _worker: worker,
+                rx: response.into_body(),
+                tx,
+            });
 
-                while let (Some(Ok(frame)), Some(inner_tx)) = (self.rx.frame().await, tx) {
-                    match frame.into_data() {
-                        Ok(chunk) => {
-                            tx = inner_tx.write(chunk).into_future().await;
-                        }
-                        Err(_) => bail!("todo: handle incoming response trailers"),
-                    }
-                }
-
-                Ok(())
-            }
-        }
-
-        let (tx, rx) = accessor.with(|mut view| component::stream(&mut view))?;
-
-        accessor.spawn(ResponseBodyTask {
-            _worker: worker,
-            rx: response.into_body(),
-            tx,
-        });
-
-        Ok(Ok(accessor.with(|mut view| {
-            WasiHttpView::table(view.deref_mut()).push(Response {
-                status_code,
-                headers,
-                body: Some(Body {
-                    stream: Some(rx),
-                    trailers: None,
-                }),
-            })
-        })?))
+            Ok(Ok(WasiHttpView::table(view.deref_mut()).push(
+                Response {
+                    status_code,
+                    headers,
+                    body: Some(Body {
+                        stream: Some(rx),
+                        trailers: None,
+                    }),
+                },
+            )?))
+        })
     }
 }
 
