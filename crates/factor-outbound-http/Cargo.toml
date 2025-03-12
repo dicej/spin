@@ -23,6 +23,7 @@ wasmtime = { workspace = true, features = ["component-model-async"] }
 wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
 wasi-http-draft = { path = "../../http" }
+futures = { workspace = true }
 
 [dev-dependencies]
 spin-factor-variables = { path = "../factor-variables" }

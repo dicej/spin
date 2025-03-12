@@ -1,6 +1,6 @@
 use std::{error::Error, net::IpAddr, sync::Arc};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use http::{header::HOST, Request};
 use http_body_util::BodyExt;
 use ip_network::IpNetwork;
@@ -56,6 +56,7 @@ pub(crate) fn add_to_linker<T: Send + 'static>(
         wasi_http_draft::WasiHttpImpl(WasiHttpImplInner { state, table })
     });
     wasi_http_draft::wasi::http::types::add_to_linker_get_host(linker, closure)?;
+    wasi_http_draft::wasi::http::handler::add_to_linker_get_host(linker, closure)?;
 
     Ok(())
 }
@@ -66,16 +67,278 @@ impl wasi_http_draft::WasiHttpView for WasiHttpImplInner<'_> {
     }
 
     #[allow(clippy::manual_async_fn)]
-    async fn send_request<T>(
-        _accessor: &mut wasmtime::component::Accessor<T, Self>,
-        _request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
+    async fn send_request<T: 'static>(
+        accessor: &mut wasmtime::component::Accessor<T, Self>,
+        request: wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Request>,
     ) -> wasmtime::Result<
         Result<
             wasmtime::component::Resource<wasi_http_draft::wasi::http::types::Response>,
             wasi_http_draft::wasi::http::types::ErrorCode,
         >,
     > {
-        Err(anyhow::anyhow!("no outbound request handler available"))
+        use {
+            futures::{channel::mpsc, SinkExt},
+            http::{uri, Uri},
+            http_body_util::{Empty, StreamBody},
+            hyper::{
+                body::{Bytes, Frame},
+                header::HeaderValue,
+            },
+            std::{ops::DerefMut, time::Duration},
+            wasi_http_draft::{
+                wasi::http::types::{Body, ErrorCode, Fields, Method, Response, Scheme},
+                WasiHttpView,
+            },
+            wasmtime::component::{self, Accessor, AccessorTask, StreamReader, StreamWriter},
+            wasmtime_wasi::runtime::AbortOnDropJoinHandle,
+            wasmtime_wasi_http::body::HyperIncomingBody,
+        };
+
+        let (
+            request,
+            allowed_hosts,
+            component_tls_configs,
+            request_interceptor,
+            self_request_origin,
+            allow_private_ips,
+        ) = accessor.with(|mut view| {
+            Ok::<_, wasmtime::Error>((
+                WasiHttpView::table(view.deref_mut()).delete(request)?,
+                view.state.allowed_hosts.clone(),
+                view.state.component_tls_configs.clone(),
+                view.state.request_interceptor.clone(),
+                view.state.self_request_origin.clone(),
+                view.state.allow_private_ips,
+            ))
+        })?;
+
+        let default_timeout_ns = 600_000_000_000u64;
+
+        let connect_timeout = Duration::from_nanos(
+            request
+                .options
+                .and_then(|v| v.connect_timeout)
+                .unwrap_or(default_timeout_ns),
+        );
+
+        let first_byte_timeout = Duration::from_nanos(
+            request
+                .options
+                .and_then(|v| v.first_byte_timeout)
+                .unwrap_or(default_timeout_ns),
+        );
+
+        let between_bytes_timeout = Duration::from_nanos(
+            request
+                .options
+                .and_then(|v| v.between_bytes_timeout)
+                .unwrap_or(default_timeout_ns),
+        );
+
+        let method = match request.method {
+            Method::Get => hyper::Method::GET,
+            Method::Head => hyper::Method::HEAD,
+            Method::Post => hyper::Method::POST,
+            Method::Put => hyper::Method::PUT,
+            Method::Delete => hyper::Method::DELETE,
+            Method::Connect => hyper::Method::CONNECT,
+            Method::Options => hyper::Method::OPTIONS,
+            Method::Trace => hyper::Method::TRACE,
+            Method::Patch => hyper::Method::PATCH,
+            Method::Other(s) => match hyper::Method::from_bytes(s.as_bytes()) {
+                Ok(method) => method,
+                Err(_) => {
+                    return Ok(Err(ErrorCode::HttpRequestMethodInvalid));
+                }
+            },
+        };
+
+        let scheme = request.scheme.unwrap_or(Scheme::Https);
+
+        let authority = if let Some(authority) = request.authority {
+            authority
+        } else {
+            match scheme {
+                Scheme::Http => ":80",
+                Scheme::Https => ":443",
+                Scheme::Other(_) => return Ok(Err(ErrorCode::HttpProtocolError)),
+            }
+            .into()
+        };
+
+        let (use_tls, scheme) = match scheme {
+            Scheme::Http => (false, uri::Scheme::HTTP),
+            Scheme::Https => (true, uri::Scheme::HTTPS),
+            Scheme::Other(_) => unreachable!(),
+        };
+
+        let path = request.path_with_query.unwrap_or_else(|| "/".into());
+
+        let uri = match Uri::builder()
+            .scheme(scheme)
+            .authority(authority.clone())
+            .path_and_query(path)
+            .build()
+        {
+            Ok(uri) => uri,
+            Err(e) => {
+                // TODO: map errors more precisely
+                return Ok(Err(ErrorCode::InternalError(Some(format!("{e:?}")))));
+            }
+        };
+
+        let mut builder = hyper::Request::builder()
+            .method(method)
+            .header(hyper::header::HOST, &authority)
+            .uri(uri);
+
+        for (k, v) in &request.headers.0 {
+            builder = builder.header(
+                k,
+                match HeaderValue::from_bytes(v) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        // TODO: map errors more precisely
+                        return Ok(Err(ErrorCode::InternalError(Some(format!("{e:?}")))));
+                    }
+                },
+            );
+        }
+
+        struct RequestBodyTask {
+            rx: StreamReader<Bytes>,
+            tx: mpsc::Sender<
+                Result<Frame<Bytes>, wasmtime_wasi_http::bindings::http::types::ErrorCode>,
+            >,
+        }
+
+        impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for RequestBodyTask {
+            async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
+                let mut rx = Some(self.rx);
+
+                while let Some(inner_rx) = rx.take() {
+                    if let Ok((inner_rx, chunk)) = inner_rx.read().into_future().await {
+                        rx = Some(inner_rx);
+                        if self.tx.send(Ok(Frame::data(chunk))).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        let empty = || {
+            Empty::<Bytes>::new()
+                .map_err(|_| unreachable!("Infallible error"))
+                .boxed()
+        };
+
+        let body = if let Some(body) = request.body {
+            if body.trailers.is_some() {
+                bail!("todo: handle outgoing request trailers");
+            }
+
+            if let Some(stream) = body.stream {
+                let (tx, rx) = mpsc::channel(1);
+                accessor.spawn(RequestBodyTask { rx: stream, tx });
+                BodyExt::boxed(StreamBody::new(rx))
+            } else {
+                empty()
+            }
+        } else {
+            empty()
+        };
+
+        let request = match builder.body(body) {
+            Ok(request) => request,
+            Err(e) => {
+                // TODO: map errors more precisely
+                return Ok(Err(ErrorCode::InternalError(Some(format!("{e:?}")))));
+            }
+        };
+
+        let response = wasmtime_wasi::runtime::spawn(send_request_impl(
+            request,
+            wasmtime_wasi_http::types::OutgoingRequestConfig {
+                use_tls,
+                connect_timeout,
+                first_byte_timeout,
+                between_bytes_timeout,
+            },
+            allowed_hosts,
+            component_tls_configs,
+            request_interceptor,
+            self_request_origin,
+            allow_private_ips,
+        ))
+        .await?;
+
+        let IncomingResponse {
+            resp: response,
+            worker,
+            ..
+        } = match response {
+            Ok(response) => response,
+            Err(_) => {
+                // TODO: map
+                // `wasmtime_wasi_http::bindings::http::types::ErrorCode` to
+                // `wasi_http_draft::wasi::http::types::ErrorCode`:
+                return Ok(Err(ErrorCode::InternalError(None)));
+            }
+        };
+
+        let status_code = response.status().as_u16();
+        let headers = Fields(
+            response
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.as_str().into(), v.as_bytes().into()))
+                .collect(),
+        );
+
+        struct ResponseBodyTask {
+            _worker: Option<AbortOnDropJoinHandle<()>>,
+            rx: HyperIncomingBody,
+            tx: StreamWriter<Bytes>,
+        }
+
+        impl<T, U: WasiHttpView> AccessorTask<T, U, wasmtime::Result<()>> for ResponseBodyTask {
+            async fn run(mut self, _: &mut Accessor<T, U>) -> wasmtime::Result<()> {
+                let mut tx = Some(self.tx);
+
+                while let (Some(Ok(frame)), Some(inner_tx)) = (self.rx.frame().await, tx) {
+                    match frame.into_data() {
+                        Ok(chunk) => {
+                            tx = inner_tx.write(chunk).into_future().await;
+                        }
+                        Err(_) => bail!("todo: handle incoming response trailers"),
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        let (tx, rx) = accessor.with(|mut view| component::stream(&mut view))?;
+
+        accessor.spawn(ResponseBodyTask {
+            _worker: worker,
+            rx: response.into_body(),
+            tx,
+        });
+
+        Ok(Ok(accessor.with(|mut view| {
+            WasiHttpView::table(view.deref_mut()).push(Response {
+                status_code,
+                headers,
+                body: Some(Body {
+                    stream: Some(rx),
+                    trailers: None,
+                }),
+            })
+        })?))
     }
 }
 

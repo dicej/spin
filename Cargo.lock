@@ -7902,6 +7902,7 @@ name = "spin-factor-outbound-http"
 version = "3.2.0-pre0"
 dependencies = [
  "anyhow",
+ "futures",
  "http 1.2.0",
  "http-body-util",
  "hyper 1.6.0",
