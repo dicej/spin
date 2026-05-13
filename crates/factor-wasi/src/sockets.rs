@@ -557,7 +557,6 @@ use wasmtime_wasi::p3::bindings::sockets::types::{
     IpSocketAddress as p3_IpSocketAddress,
 };
 use wasmtime_wasi::p3::sockets::SocketResult as P3SocketResult;
-use wasmtime_wasi::sockets::WasiSocketsView;
 
 impl<T> p3_Host for SpinSocketsView<'_, T> {
     fn convert_error_code(

@@ -33,8 +33,6 @@ pub use wasmtime_wasi_http::p2::{
     types::{HostFutureIncomingResponse, OutgoingRequestConfig},
 };
 
-pub use wasi::{MutexBody, NotifyOnDropBody, p2_to_p3_error_code, p3_to_p2_error_code};
-
 #[derive(Default)]
 pub struct OutboundHttpFactor {
     _priv: (),

@@ -56,7 +56,10 @@ struct TestFactorsWithMqtt {
 fn get_sockets_view_with_mqtt(
     state: &mut TestFactorsWithMqttInstanceState,
 ) -> WasiSocketsCtxView<'_> {
-    todo!()
+    WasiSocketsCtxView {
+        ctx: state.wasi.ctx().sockets(),
+        table: &mut state.__table,
+    }
 }
 
 #[derive(RuntimeFactors)]
