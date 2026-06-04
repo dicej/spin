@@ -53,7 +53,7 @@ impl<T, S: HandlerState<StoreData = T>> HandlerType<S> {
                 // `ServicePre::new` above proves that `pre` implements
                 // `wasi:http/handler@0.3.0-rc-2026-03-15`, so this can't fail.
                 ServiceIndices::new(pre.instance_pre()).unwrap(),
-                ProxyHandler::new(handler_state, ProxyPre::P3(pre)),
+                ProxyHandler::new(handler_state),
             ));
         }
         if let Ok(indices) = ProxyIndices2023_10_18::new(pre) {

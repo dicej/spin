@@ -172,7 +172,8 @@ pub(crate) async fn test(
                 #[inline]
                 fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Infallible> {
                     self.called.store(true, Ordering::Relaxed);
-                    Ok(self.cha_cha_12.fill_bytes(bytes))
+                    self.cha_cha_12.fill_bytes(bytes);
+                    Ok(())
                 }
             }
 

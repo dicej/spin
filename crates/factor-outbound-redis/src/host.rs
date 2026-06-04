@@ -234,7 +234,7 @@ impl crate::RedisFactorData {
     }
 }
 
-impl<T> v3::HostConnectionWithStore<T> for crate::RedisFactorData {
+impl<T: Send> v3::HostConnectionWithStore<T> for crate::RedisFactorData {
     #[instrument(name = "spin_outbound_redis.open_connection", skip(accessor, address), err(level = Level::INFO), fields(otel.kind = "client", db.system = "redis", db.address = Empty, server.port = Empty, db.namespace = Empty))]
     async fn open(
         accessor: &Accessor<T, Self>,

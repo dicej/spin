@@ -7,6 +7,7 @@
 
 use std::{
     collections::HashMap,
+    marker::PhantomData,
     sync::{Arc, Mutex},
 };
 
@@ -42,19 +43,20 @@ impl SocketPermitState {
 
 /// A view over WASI socket state that carries an optional per-instance socket
 /// permit store, enabling per-connection quota tracking.
-pub struct SpinSocketsView<'a> {
+pub struct SpinSocketsView<'a, T> {
     pub(crate) inner: WasiSocketsCtxView<'a>,
     pub(crate) permit_state: Option<Arc<SocketPermitState>>,
+    pub(crate) getter: fn(&mut T) -> WasiSocketsCtxView<'_>,
 }
 
-impl<'a> std::ops::Deref for SpinSocketsView<'a> {
+impl<'a, T> std::ops::Deref for SpinSocketsView<'a, T> {
     type Target = WasiSocketsCtxView<'a>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl std::ops::DerefMut for SpinSocketsView<'_> {
+impl<T> std::ops::DerefMut for SpinSocketsView<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -63,20 +65,20 @@ impl std::ops::DerefMut for SpinSocketsView<'_> {
 /// [`HasData`] accessor for [`SpinSocketsView`], used in place of [`WasiSockets`]
 /// when registering TCP socket bindings so that `start_connect` and `drop` can
 /// participate in socket quota tracking.
-pub struct SpinSockets;
+pub struct SpinSockets<T>(PhantomData<fn() -> T>);
 
-impl HasData for SpinSockets {
-    type Data<'a> = SpinSocketsView<'a>;
+impl<T: 'static> HasData for SpinSockets<T> {
+    type Data<'a> = SpinSocketsView<'a, T>;
 }
 
-impl<'a> SpinSocketsView<'a> {
+impl<'a, T> SpinSocketsView<'a, T> {
     /// Consumes this view and returns the inner [`WasiSocketsCtxView`].
     pub fn into_wasi(self) -> WasiSocketsCtxView<'a> {
         self.inner
     }
 }
 
-impl SpinSocketsView<'_> {
+impl<T> SpinSocketsView<'_, T> {
     /// Attempts to acquire a connection permit from the semaphore.
     ///
     /// Returns `Ok(None)` when no quota is configured, `Ok(Some(permit))` on
@@ -116,9 +118,9 @@ impl SpinSocketsView<'_> {
     }
 }
 
-impl p2_tcp::Host for SpinSocketsView<'_> {}
+impl<T> p2_tcp::Host for SpinSocketsView<'_, T> {}
 
-impl p2_tcp::HostTcpSocket for SpinSocketsView<'_> {
+impl<T> p2_tcp::HostTcpSocket for SpinSocketsView<'_, T> {
     async fn start_bind(
         &mut self,
         this: Resource<TcpSocket>,
@@ -337,7 +339,7 @@ impl p2_tcp::HostTcpSocket for SpinSocketsView<'_> {
     }
 }
 
-impl NetworkHost for SpinSocketsView<'_> {
+impl<T> NetworkHost for SpinSocketsView<'_, T> {
     fn convert_error_code(
         &mut self,
         error: wasmtime_wasi::p2::SocketError,
@@ -353,13 +355,13 @@ impl NetworkHost for SpinSocketsView<'_> {
     }
 }
 
-impl wasmtime_wasi::p2::bindings::sockets::network::HostNetwork for SpinSocketsView<'_> {
+impl<T> wasmtime_wasi::p2::bindings::sockets::network::HostNetwork for SpinSocketsView<'_, T> {
     fn drop(&mut self, this: Resource<Network>) -> wasmtime::Result<()> {
         wasmtime_wasi::p2::bindings::sockets::network::HostNetwork::drop(&mut self.inner, this)
     }
 }
 
-impl p2_tcp_create::Host for SpinSocketsView<'_> {
+impl<T> p2_tcp_create::Host for SpinSocketsView<'_, T> {
     fn create_tcp_socket(
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
@@ -368,9 +370,9 @@ impl p2_tcp_create::Host for SpinSocketsView<'_> {
     }
 }
 
-impl p2_udp::Host for SpinSocketsView<'_> {}
+impl<T> p2_udp::Host for SpinSocketsView<'_, T> {}
 
-impl p2_udp::HostUdpSocket for SpinSocketsView<'_> {
+impl<T> p2_udp::HostUdpSocket for SpinSocketsView<'_, T> {
     async fn start_bind(
         &mut self,
         this: Resource<p2_udp::UdpSocket>,
@@ -477,7 +479,7 @@ impl p2_udp::HostUdpSocket for SpinSocketsView<'_> {
     }
 }
 
-impl p2_udp::HostIncomingDatagramStream for SpinSocketsView<'_> {
+impl<T> p2_udp::HostIncomingDatagramStream for SpinSocketsView<'_, T> {
     fn receive(
         &mut self,
         this: Resource<p2_udp::IncomingDatagramStream>,
@@ -498,7 +500,7 @@ impl p2_udp::HostIncomingDatagramStream for SpinSocketsView<'_> {
     }
 }
 
-impl p2_udp::HostOutgoingDatagramStream for SpinSocketsView<'_> {
+impl<T> p2_udp::HostOutgoingDatagramStream for SpinSocketsView<'_, T> {
     fn check_send(
         &mut self,
         this: Resource<p2_udp::OutgoingDatagramStream>,
@@ -526,7 +528,7 @@ impl p2_udp::HostOutgoingDatagramStream for SpinSocketsView<'_> {
     }
 }
 
-impl p2_udp_create::Host for SpinSocketsView<'_> {
+impl<T> p2_udp_create::Host for SpinSocketsView<'_, T> {
     fn create_udp_socket(
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
@@ -557,7 +559,7 @@ use wasmtime_wasi::p3::bindings::sockets::types::{
 use wasmtime_wasi::p3::sockets::SocketResult as P3SocketResult;
 use wasmtime_wasi::sockets::WasiSocketsView;
 
-impl p3_Host for SpinSocketsView<'_> {
+impl<T> p3_Host for SpinSocketsView<'_, T> {
     fn convert_error_code(
         &mut self,
         error: wasmtime_wasi::p3::sockets::SocketError,
@@ -566,7 +568,7 @@ impl p3_Host for SpinSocketsView<'_> {
     }
 }
 
-impl p3_HostTcpSocket for SpinSocketsView<'_> {
+impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
     async fn bind(
         &mut self,
         socket: Resource<p3_types::TcpSocket>,
@@ -726,7 +728,7 @@ impl p3_HostTcpSocket for SpinSocketsView<'_> {
     }
 }
 
-impl p3_HostUdpSocket for SpinSocketsView<'_> {
+impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
     async fn bind(
         &mut self,
         socket: Resource<p3_types::UdpSocket>,
@@ -835,7 +837,7 @@ impl p3_HostUdpSocket for SpinSocketsView<'_> {
     }
 }
 
-impl<T: WasiSocketsView + 'static> HostTcpSocketWithStore<T> for SpinSockets {
+impl<T: 'static> HostTcpSocketWithStore<T> for SpinSockets<T> {
     async fn connect(
         store: &Accessor<T, Self>,
         socket: Resource<p3_types::TcpSocket>,
@@ -851,7 +853,8 @@ impl<T: WasiSocketsView + 'static> HostTcpSocketWithStore<T> for SpinSockets {
                 return Err(p3_ErrorCode::Other(Some("connection quota exhausted".into())).into());
             }
         };
-        let wasi_accessor = store.with_getter::<WasiSockets>(<T as WasiSocketsView>::sockets);
+        let getter = store.with(|mut store| store.get().getter);
+        let wasi_accessor = store.with_getter::<WasiSockets>(getter);
         let result: P3SocketResult<()> = <WasiSockets as HostTcpSocketWithStore<T>>::connect(
             &wasi_accessor,
             socket,
@@ -870,8 +873,8 @@ impl<T: WasiSocketsView + 'static> HostTcpSocketWithStore<T> for SpinSockets {
         mut store: Access<'_, T, Self>,
         socket: Resource<p3_types::TcpSocket>,
     ) -> P3SocketResult<wasmtime::component::StreamReader<Resource<p3_types::TcpSocket>>> {
-        let wasi_store =
-            Access::<T, WasiSockets>::new(store.as_context_mut(), <T as WasiSocketsView>::sockets);
+        let getter = store.get().getter;
+        let wasi_store = Access::<T, WasiSockets>::new(store.as_context_mut(), getter);
         <WasiSockets as HostTcpSocketWithStore<T>>::listen(wasi_store, socket)
     }
 
@@ -880,8 +883,8 @@ impl<T: WasiSocketsView + 'static> HostTcpSocketWithStore<T> for SpinSockets {
         socket: Resource<p3_types::TcpSocket>,
         data: wasmtime::component::StreamReader<u8>,
     ) -> wasmtime::Result<wasmtime::component::FutureReader<Result<(), p3_ErrorCode>>> {
-        let wasi_store =
-            Access::<T, WasiSockets>::new(store.as_context_mut(), <T as WasiSocketsView>::sockets);
+        let getter = store.get().getter;
+        let wasi_store = Access::<T, WasiSockets>::new(store.as_context_mut(), getter);
         <WasiSockets as HostTcpSocketWithStore<T>>::send(wasi_store, socket, data)
     }
 
@@ -892,20 +895,21 @@ impl<T: WasiSocketsView + 'static> HostTcpSocketWithStore<T> for SpinSockets {
         wasmtime::component::StreamReader<u8>,
         wasmtime::component::FutureReader<Result<(), p3_ErrorCode>>,
     )> {
-        let wasi_store =
-            Access::<T, WasiSockets>::new(store.as_context_mut(), <T as WasiSocketsView>::sockets);
+        let getter = store.get().getter;
+        let wasi_store = Access::<T, WasiSockets>::new(store.as_context_mut(), getter);
         <WasiSockets as HostTcpSocketWithStore<T>>::receive(wasi_store, socket)
     }
 }
 
-impl<T: WasiSocketsView + 'static> HostUdpSocketWithStore<T> for SpinSockets {
+impl<T: 'static> HostUdpSocketWithStore<T> for SpinSockets<T> {
     async fn send(
         store: &Accessor<T, Self>,
         socket: Resource<p3_types::UdpSocket>,
         data: Vec<u8>,
         remote_address: Option<p3_IpSocketAddress>,
     ) -> P3SocketResult<()> {
-        let wasi_accessor = store.with_getter::<WasiSockets>(<T as WasiSocketsView>::sockets);
+        let getter = store.with(|mut store| store.get().getter);
+        let wasi_accessor = store.with_getter::<WasiSockets>(getter);
         <WasiSockets as HostUdpSocketWithStore<T>>::send(
             &wasi_accessor,
             socket,
@@ -919,7 +923,8 @@ impl<T: WasiSocketsView + 'static> HostUdpSocketWithStore<T> for SpinSockets {
         store: &Accessor<T, Self>,
         socket: Resource<p3_types::UdpSocket>,
     ) -> P3SocketResult<(Vec<u8>, p3_IpSocketAddress)> {
-        let wasi_accessor = store.with_getter::<WasiSockets>(<T as WasiSocketsView>::sockets);
+        let getter = store.with(|mut store| store.get().getter);
+        let wasi_accessor = store.with_getter::<WasiSockets>(getter);
         <WasiSockets as HostUdpSocketWithStore<T>>::receive(&wasi_accessor, socket).await
     }
 }
