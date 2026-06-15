@@ -202,9 +202,9 @@ wasm-pkg-client = "0.11"
 wasm-pkg-common = "0.11"
 wasmparser = "0.247.0"
 # TODO: switch back to crates.io version once 46.0.0 is released:
-wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", rev = "1f0294d34f27def54f22981ab575af2f1c258184", features = ["component-model-async"] }
-wasmtime-wasi = { git = "https://github.com/bytecodealliance/wasmtime", rev = "1f0294d34f27def54f22981ab575af2f1c258184", features = ["p3"] }
-wasmtime-wasi-http = { git = "https://github.com/bytecodealliance/wasmtime", rev = "1f0294d34f27def54f22981ab575af2f1c258184", features = ["p3", "component-model-async"] }
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime", branch = "release-46.0.0", features = ["component-model-async"] }
+wasmtime-wasi = { git = "https://github.com/bytecodealliance/wasmtime", branch = "release-46.0.0", features = ["p3"] }
+wasmtime-wasi-http = { git = "https://github.com/bytecodealliance/wasmtime", branch = "release-46.0.0", features = ["p3", "component-model-async"] }
 wit-component = "0.247.0"
 wit-parser = "0.247.0"
 

@@ -43,10 +43,10 @@ use tokio::{
     task,
 };
 use tracing::Instrument;
-use wasmtime::{Store, ToWasmtimeResult};
+use wasmtime::{Store, StoreContextMut, ToWasmtimeResult, component::GuestTaskId};
 use wasmtime_wasi::p2::bindings::CommandIndices;
 use wasmtime_wasi_http::handler::{
-    self, HandlerState, Instance, Proxy, ShouldAccept, ViewFn, WorkerExpiration, WorkerState,
+    HandlerState, Instance, Proxy, ShouldAccept, ViewFn, WorkerExpiration, WorkerState,
     WorkerStatus,
 };
 use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
@@ -739,6 +739,7 @@ pub(crate) struct HttpWorkerState<F: RuntimeFactors> {
 
 impl<F: RuntimeFactors> WorkerState for HttpWorkerState<F> {
     type StoreData = InstanceState<F::InstanceState, ()>;
+    type RequestId = ();
 
     fn should_accept_request(&self, concurrent_count: usize, total_count: usize) -> ShouldAccept {
         if total_count >= self.max_instance_reuse_count {
@@ -752,7 +753,9 @@ impl<F: RuntimeFactors> WorkerState for HttpWorkerState<F> {
 
     fn on_request_start(
         &self,
-        _: &handler::Request,
+        _: StoreContextMut<'_, Self::StoreData>,
+        _: Self::RequestId,
+        _: GuestTaskId,
     ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>> {
         Box::pin(tokio::time::sleep(self.request_timeout))
     }

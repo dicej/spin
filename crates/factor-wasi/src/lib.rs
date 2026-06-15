@@ -126,17 +126,6 @@ trait InitContextExt: InitContext<WasiFactor> {
         add_to_linker(self.linker(), Self::get_cli)
     }
 
-    fn link_cli_default_bindings<O: Default>(
-        &mut self,
-        add_to_linker: fn(
-            &mut wasmtime::component::Linker<Self::StoreData>,
-            &O,
-            fn(&mut Self::StoreData) -> WasiCliCtxView<'_>,
-        ) -> wasmtime::Result<()>,
-    ) -> wasmtime::Result<()> {
-        add_to_linker(self.linker(), &O::default(), Self::get_cli)
-    }
-
     fn get_filesystem(data: &mut Self::StoreData) -> WasiFilesystemCtxView<'_> {
         let (state, table) = Self::get_data_with_table(data);
         WasiFilesystemCtxView {
@@ -313,7 +302,7 @@ impl Factor for WasiFactor {
             p3::bindings::random::insecure_seed::add_to_linker::<_, WasiRandom>,
         )?;
         ctx.link_cli_bindings(p2::bindings::cli::exit::add_to_linker::<_, WasiCli>)?;
-        ctx.link_cli_default_bindings(p3::bindings::cli::exit::add_to_linker::<_, WasiCli>)?;
+        ctx.link_cli_bindings(p3::bindings::cli::exit::add_to_linker::<_, WasiCli>)?;
         ctx.link_cli_bindings(p2::bindings::cli::environment::add_to_linker::<_, WasiCli>)?;
         ctx.link_cli_bindings(p3::bindings::cli::environment::add_to_linker::<_, WasiCli>)?;
         ctx.link_cli_bindings(p2::bindings::cli::stdin::add_to_linker::<_, WasiCli>)?;

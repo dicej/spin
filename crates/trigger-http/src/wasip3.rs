@@ -28,7 +28,10 @@ impl<F: RuntimeFactors> Wasip3HttpExecutor<'_, F> {
 
         Ok(self
             .0
-            .handle(req.map(|body| body.map_err(ErrorCode::from).boxed_unsync()))
+            .handle(
+                (),
+                req.map(|body| body.map_err(ErrorCode::from).boxed_unsync()),
+            )
             .await?
             .map(|body| {
                 body.map_err(|e| match e.downcast::<p3_types::ErrorCode>() {
