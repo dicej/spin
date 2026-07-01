@@ -3,6 +3,7 @@ pub mod sockets;
 pub mod spin;
 mod wasi_2023_10_18;
 mod wasi_2023_11_10;
+mod wasi_2026_03_15;
 
 use std::{
     future::Future,
@@ -248,6 +249,31 @@ trait InitContextExt: InitContext<WasiFactor> {
             Self::get_spin_sockets,
         )
     }
+
+    fn link_all_p3_bindings(
+        &mut self,
+        add_to_linker: fn(
+            &mut wasmtime::component::Linker<Self::StoreData>,
+            fn(&mut Self::StoreData) -> &mut ResourceTable,
+            fn(&mut Self::StoreData) -> &mut WasiRandomCtx,
+            fn(&mut Self::StoreData) -> WasiClocksCtxView<'_>,
+            fn(&mut Self::StoreData) -> WasiCliCtxView<'_>,
+            fn(&mut Self::StoreData) -> WasiFilesystemCtxView<'_>,
+            fn(&mut Self::StoreData) -> SpinSocketsView<'_, Self::StoreData>,
+            fn(&mut Self::StoreData) -> WasiSocketsCtxView<'_>,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        add_to_linker(
+            self.linker(),
+            Self::get_table,
+            Self::get_random,
+            Self::get_clocks,
+            Self::get_cli,
+            Self::get_filesystem,
+            Self::get_spin_sockets,
+            Self::get_wasi_sockets,
+        )
+    }
 }
 
 impl<T> InitContextExt for T where T: InitContext<WasiFactor> {}
@@ -351,6 +377,7 @@ impl Factor for WasiFactor {
 
         ctx.link_all_bindings(wasi_2023_10_18::add_to_linker)?;
         ctx.link_all_bindings(wasi_2023_11_10::add_to_linker)?;
+        ctx.link_all_p3_bindings(wasi_2026_03_15::add_to_linker)?;
         Ok(())
     }
 
