@@ -27,6 +27,8 @@ use wasmtime_wasi::sockets::{WasiSockets, WasiSocketsCtxView};
 use wasmtime_wasi::{DirPerms, FilePerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView};
 
 pub use sockets::{SocketPermitState, SpinSockets, SpinSocketsView};
+pub use wasi_2023_10_18::convert_result;
+pub use wasi_2026_03_15::{FutureReaderExt, StreamReaderExt, reborrow};
 pub use wasmtime_wasi::sockets::SocketAddrUse;
 
 pub struct WasiFactor {

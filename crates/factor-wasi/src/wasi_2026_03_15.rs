@@ -1,11 +1,11 @@
-use super::wasi_2023_10_18::{convert, convert_result};
+use super::{convert, wasi_2023_10_18::convert_result};
 use crate::sockets::{SpinSockets, SpinSocketsView};
 use futures::{
     Stream as _,
     channel::{mpsc, oneshot},
 };
 use pin_project_lite::pin_project;
-use spin_factors::anyhow::Result;
+use spin_factors::anyhow;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use wasmtime::component::{
@@ -17,12 +17,9 @@ use wasmtime::{AsContextMut, StoreContextMut};
 use wasmtime_wasi::cli::{WasiCli, WasiCliCtxView};
 use wasmtime_wasi::clocks::{WasiClocks, WasiClocksCtxView};
 use wasmtime_wasi::filesystem::{WasiFilesystem, WasiFilesystemCtxView};
+use wasmtime_wasi::p3::bindings as latest;
 use wasmtime_wasi::random::{WasiRandom, WasiRandomCtx};
 use wasmtime_wasi::sockets::{WasiSockets, WasiSocketsCtxView};
-
-mod latest {
-    pub use wasmtime_wasi::p3::bindings::*;
-}
 
 mod bindings {
     use super::latest;
@@ -73,7 +70,7 @@ pub fn add_to_linker<T>(
     filesystem_closure: fn(&mut T) -> WasiFilesystemCtxView<'_>,
     sockets_closure: fn(&mut T) -> SpinSocketsView<'_, T>,
     wasi_sockets_closure: fn(&mut T) -> WasiSocketsCtxView<'_>,
-) -> Result<()>
+) -> anyhow::Result<()>
 where
     T: Send + 'static,
 {
@@ -1264,7 +1261,7 @@ impl From<latest::filesystem::types::DescriptorStat> for wasi::filesystem::types
     }
 }
 
-trait FutureReaderExt<T> {
+pub trait FutureReaderExt<T> {
     fn try_map<U: Lower + Lift + 'static>(
         self,
         store: impl AsContextMut,
@@ -1281,9 +1278,9 @@ impl<T: Lift + Send + 'static> FutureReaderExt<T> for FutureReader<T> {
         pin_project! {
             struct Producer<T, F> {
                 #[pin]
-                    rx: oneshot::Receiver<T>,
-                    fun: Option<F>,
-                }
+                rx: oneshot::Receiver<T>,
+                fun: Option<F>,
+            }
         }
 
         impl<D, T: Send + 'static, U, F: FnOnce(T) -> U + Send + 'static> FutureProducer<D>
@@ -1348,7 +1345,7 @@ impl<T: Lift + Send + 'static> FutureReaderExt<T> for FutureReader<T> {
     }
 }
 
-trait StreamReaderExt<T> {
+pub trait StreamReaderExt<T> {
     fn try_map<U: Lower + Lift + Send + Sync + 'static>(
         self,
         store: impl AsContextMut,
@@ -1438,7 +1435,7 @@ impl<T: Lift + Send + 'static> StreamReaderExt<T> for StreamReader<T> {
     }
 }
 
-fn reborrow<'a, T: 'static, D: HasData + ?Sized>(
+pub fn reborrow<'a, T: 'static, D: HasData + ?Sized>(
     access: &'a mut Access<'_, T, D>,
 ) -> Access<'a, T, D> {
     let getter = access.getter();
