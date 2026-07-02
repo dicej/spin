@@ -254,7 +254,6 @@ trait InitContextExt: InitContext<WasiFactor> {
         &mut self,
         add_to_linker: fn(
             &mut wasmtime::component::Linker<Self::StoreData>,
-            fn(&mut Self::StoreData) -> &mut ResourceTable,
             fn(&mut Self::StoreData) -> &mut WasiRandomCtx,
             fn(&mut Self::StoreData) -> WasiClocksCtxView<'_>,
             fn(&mut Self::StoreData) -> WasiCliCtxView<'_>,
@@ -265,7 +264,6 @@ trait InitContextExt: InitContext<WasiFactor> {
     ) -> anyhow::Result<()> {
         add_to_linker(
             self.linker(),
-            Self::get_table,
             Self::get_random,
             Self::get_clocks,
             Self::get_cli,

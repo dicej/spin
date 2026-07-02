@@ -9293,6 +9293,8 @@ version = "4.1.0-pre0"
 dependencies = [
  "async-trait",
  "bytes",
+ "futures",
+ "pin-project-lite",
  "spin-common",
  "spin-connection-semaphore",
  "spin-factors",
