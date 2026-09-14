@@ -1,3 +1,4 @@
+pub mod filesystem;
 mod io;
 pub mod sockets;
 pub mod spin;
@@ -26,6 +27,7 @@ use wasmtime_wasi::random::{WasiRandom, WasiRandomCtx};
 use wasmtime_wasi::sockets::{WasiSockets, WasiSocketsCtxView};
 use wasmtime_wasi::{FsPerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView};
 
+pub use filesystem::{SpinFilesystem, SpinFilesystemView};
 pub use sockets::{SocketPermitState, SpinSockets, SpinSocketsView};
 pub use wasi_2023_10_18::convert_result;
 pub use wasi_2026_03_15::{FutureReaderExt, StreamReaderExt, reborrow};
@@ -137,6 +139,18 @@ trait InitContextExt: InitContext<WasiFactor> {
         }
     }
 
+    fn get_spin_filesystem(data: &mut Self::StoreData) -> SpinFilesystemView<'_, Self::StoreData> {
+        let (state, table) = Self::get_data_with_table(data);
+        SpinFilesystemView {
+            inner: WasiFilesystemCtxView {
+                ctx: state.ctx.filesystem(),
+                table,
+            },
+            permit_state: todo!(),
+            getter: Self::get_filesystem,
+        }
+    }
+
     fn link_filesystem_bindings(
         &mut self,
         add_to_linker: fn(
@@ -145,6 +159,16 @@ trait InitContextExt: InitContext<WasiFactor> {
         ) -> wasmtime::Result<()>,
     ) -> wasmtime::Result<()> {
         add_to_linker(self.linker(), Self::get_filesystem)
+    }
+
+    fn link_spin_filesystem_bindings(
+        &mut self,
+        add_to_linker: fn(
+            &mut wasmtime::component::Linker<Self::StoreData>,
+            fn(&mut Self::StoreData) -> SpinFilesystemView<'_, Self::StoreData>,
+        ) -> wasmtime::Result<()>,
+    ) -> wasmtime::Result<()> {
+        add_to_linker(self.linker(), Self::get_spin_filesystem)
     }
 
     fn get_sockets(data: &mut Self::StoreData) -> WasiSocketsCtxView<'_> {
@@ -302,11 +326,11 @@ impl Factor for WasiFactor {
         ctx.link_clocks_bindings(
             p3::bindings::clocks::monotonic_clock::add_to_linker::<_, WasiClocks>,
         )?;
-        ctx.link_filesystem_bindings(
-            p2::bindings::filesystem::types::add_to_linker::<_, WasiFilesystem>,
+        ctx.link_spin_filesystem_bindings(
+            p2::bindings::filesystem::types::add_to_linker::<_, SpinFilesystem<T::StoreData>>,
         )?;
-        ctx.link_filesystem_bindings(
-            p3::bindings::filesystem::types::add_to_linker::<_, WasiFilesystem>,
+        ctx.link_spin_filesystem_bindings(
+            p3::bindings::filesystem::types::add_to_linker::<_, SpinFilesystem<T::StoreData>>,
         )?;
         ctx.link_filesystem_bindings(
             p2::bindings::filesystem::preopens::add_to_linker::<_, WasiFilesystem>,
