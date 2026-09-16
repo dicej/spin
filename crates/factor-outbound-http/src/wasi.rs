@@ -332,7 +332,7 @@ struct RequestSender {
     self_request_origin: Option<SelfRequestOrigin>,
     request_interceptor: Option<Arc<dyn OutboundHttpInterceptor>>,
     http_clients: HttpClients,
-    semaphore: ConnectionSemaphore,
+    semaphore: ResourceSemaphore,
 }
 
 impl RequestSender {
@@ -481,13 +481,14 @@ impl RequestSender {
             None
         };
 
-        let resp = CONNECT_OPTIONS.scope(
+        let (semaphore, semphore_bound) = self.semaphore.bounded();
+        let resp = with_connect_options(
             ConnectOptions {
                 blocked_networks: self.blocked_networks,
                 connect_timeout,
                 tls_client_config,
                 override_connect_addr,
-                semaphore: self.semaphore,
+                semaphore,
             },
             async move {
                 if use_tls {
@@ -526,7 +527,16 @@ impl RequestSender {
 
         record_content_length_header(&span, resp.headers(), "http.response.header.content-length");
 
-        Ok(IncomingResponse { resp, worker: None })
+        Ok(IncomingResponse {
+            resp: resp.map(|body| {
+                BodyWithAttachment {
+                    body,
+                    _attachment: semaphore_bound,
+                }
+                .boxed()
+            }),
+            worker: None,
+        })
     }
 }
 
@@ -572,17 +582,24 @@ tokio::task_local! {
 }
 
 #[derive(Clone)]
-struct ConnectOptions {
+pub struct ConnectOptions {
     /// The blocked networks configuration.
-    blocked_networks: BlockedNetworks,
+    pub blocked_networks: BlockedNetworks,
     /// Timeout for establishing a TCP connection.
-    connect_timeout: Duration,
+    pub connect_timeout: Duration,
     /// TLS client configuration to use, if any.
-    tls_client_config: Option<TlsClientConfig>,
+    pub tls_client_config: Option<TlsClientConfig>,
     /// If set, override the address to connect to instead of using the given `uri`'s authority.
-    override_connect_addr: Option<SocketAddr>,
+    pub override_connect_addr: Option<SocketAddr>,
     /// Semaphore to limit concurrent outbound connections.
-    semaphore: ConnectionSemaphore,
+    pub semaphore: ResourceSemaphore,
+}
+
+pub fn with_connect_options<F: Future>(
+    options: ConnectOptions,
+    future: F,
+) -> TaskLocalFuture<ConnectOptions, F> {
+    CONNECT_OPTIONS.scope(options, future)
 }
 
 impl ConnectOptions {
@@ -620,16 +637,18 @@ impl ConnectOptions {
 
         let connect = async {
             // If we're limiting concurrent outbound requests, acquire a permit
-            let permit = self.semaphore.acquire().await;
-            (TcpStream::connect(&*socket_addrs).await, permit)
+            let permit = self
+                .semaphore
+                .acquire(ResourceType::TcpStreamForHttp)
+                .await?;
+            Ok((TcpStream::connect(&*socket_addrs).await, permit))
         };
 
         // Make sure that the connect timeout applies to both acquiring the outbound request permit and establishing the TCP connection,
         // since acquiring the permit could potentially take a long time if there are many outbound requests happening.
         let (stream, permit) = timeout(self.connect_timeout, connect)
             .await
-            .map_err(|_| ErrorCode::ConnectionTimeout)?;
-        let permit = permit.map_err(|_| ErrorCode::ConnectionLimitReached)?;
+            .map_err(|_| ErrorCode::ConnectionTimeout)??;
         let stream = stream.map_err(|err| match err.kind() {
             std::io::ErrorKind::AddrNotAvailable => dns_error("address not available".into(), 0),
             _ => ErrorCode::ConnectionRefused,
@@ -667,7 +686,7 @@ impl ConnectOptions {
 
 /// A connector the uses `ConnectOptions`
 #[derive(Clone)]
-struct HttpConnector;
+pub struct HttpConnector;
 
 impl HttpConnector {
     async fn connect(uri: Uri) -> Result<TokioIo<PermittedTcpStream>, ErrorCode> {
@@ -693,7 +712,7 @@ impl Service<Uri> for HttpConnector {
 
 /// A connector that establishes TLS connections using `rustls` and `ConnectOptions`.
 #[derive(Clone)]
-struct HttpsConnector;
+pub struct HttpsConnector;
 
 impl HttpsConnector {
     async fn connect(uri: Uri) -> Result<TokioIo<RustlsStream>, ErrorCode> {
@@ -772,14 +791,27 @@ impl AsyncWrite for RustlsStream {
 }
 
 /// A TCP stream that holds a permit indicating that it is allowed to exist.
-struct PermittedTcpStream {
+pub struct PermittedTcpStream {
     /// The wrapped TCP stream.
     inner: TcpStream,
     /// A permit indicating that this stream is allowed to exist.
     ///
     /// When this stream is dropped, the permit is also dropped, allowing another
     /// connection to be established.
-    _permit: ConnectionPermit,
+    permit: ResourcePermit,
+}
+
+impl PermittedTcpStream {
+    pub fn new(inner: TcpStream, permit: ResourcePermit) -> Self {
+        Self {
+            inner,
+            _permit: permit,
+        }
+    }
+
+    fn attribute_permit(&self) {
+        _ = CONNECT_OPTIONS.try_with(|options| options.semaphore.attribute(&self.permit));
+    }
 }
 
 impl Connection for PermittedTcpStream {
@@ -794,6 +826,7 @@ impl AsyncRead for PermittedTcpStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
+        self.attribute_permit();
         Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
     }
 }
@@ -804,6 +837,7 @@ impl AsyncWrite for PermittedTcpStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, std::io::Error>> {
+        self.attribute_permit();
         Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
     }
 

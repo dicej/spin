@@ -12,6 +12,11 @@ use std::{
 };
 use tokio::task;
 
+struct PermittedConnection {
+    inner: Connection,
+    _permit: Option<Permit>,
+}
+
 #[derive(Clone, Debug)]
 pub enum DatabaseLocation {
     InMemory,
@@ -20,7 +25,7 @@ pub enum DatabaseLocation {
 
 pub struct KeyValueSqlite {
     location: DatabaseLocation,
-    connection: OnceLock<Arc<Mutex<Connection>>>,
+    connection: OnceLock<Arc<Mutex<PermittedConnection>>>,
 }
 
 impl KeyValueSqlite {
@@ -36,14 +41,21 @@ impl KeyValueSqlite {
         }
     }
 
-    fn create_connection(&self) -> Result<Arc<Mutex<Connection>>, Error> {
+    fn create_connection(&self, permit: Permit) -> Result<Arc<Mutex<PermittedConnection>>, Error> {
         let connection = match &self.location {
-            DatabaseLocation::InMemory => Connection::open_in_memory(),
-            DatabaseLocation::Path(path) => Connection::open(path),
+            DatabaseLocation::InMemory => PermittedConnection {
+                inner: Connection::open_in_memory(),
+                _permit: None,
+            },
+            DatabaseLocation::Path(path) => PermittedConnection {
+                inner: Connection::open(path),
+                _permit: Some(permit),
+            },
         }
         .map_err(log_error)?;
 
         connection
+            .inner
             .execute(
                 "CREATE TABLE IF NOT EXISTS spin_key_value (
                            store TEXT NOT NULL,
@@ -65,20 +77,30 @@ impl KeyValueSqlite {
 
 #[async_trait]
 impl StoreManager for KeyValueSqlite {
-    async fn get(&self, name: &str) -> Result<Arc<dyn Store>, Error> {
-        let connection = task::block_in_place(|| {
-            if let Some(c) = self.connection.get() {
-                return Ok(c);
-            }
-            // Only create the connection if we failed to get it.
-            // We might do duplicate work here if there's a race, but that's fine.
-            let new = self.create_connection()?;
-            Ok(self.connection.get_or_init(|| new))
-        })?;
+    async fn get(
+        &self,
+        name: &str,
+        semaphore: ResourceSemaphore,
+        bound: ResourceBound,
+    ) -> Result<Arc<dyn Store>, Error> {
+        let connection = if let Some(connection) = self.connection.get() {
+            connection
+        } else {
+            let permit = semaphore.acquire().await?;
+            task::block_in_place(|| {
+                // Only create the connection if we failed to get it.
+                // We might do duplicate work here if there's a race, but that's fine.
+                let new = self.create_connection(permit)?;
+                Ok(self.connection.get_or_init(|| new))
+            })?
+        };
+
+        semaphore.attribute(&bound);
 
         Ok(Arc::new(SqliteStore {
             name: name.to_owned(),
             connection: connection.clone(),
+            bound,
         }))
     }
 
@@ -96,7 +118,7 @@ impl StoreManager for KeyValueSqlite {
 
 struct SqliteStore {
     name: String,
-    connection: Arc<Mutex<Connection>>,
+    connection: Arc<Mutex<PermittedConnection>>,
 }
 
 #[async_trait]
@@ -106,6 +128,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached("SELECT value FROM spin_key_value WHERE store=$1 AND key=$2")
                 .map_err(log_error)?
                 .query_map([&self.name, key], |row| row.get::<_, Vec<u8>>(0))
@@ -134,6 +157,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached(
                     "INSERT INTO spin_key_value (store, key, value) VALUES ($1, $2, $3)
                      ON CONFLICT(store, key) DO UPDATE SET value=$3",
@@ -150,6 +174,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached("DELETE FROM spin_key_value WHERE store=$1 AND key=$2")
                 .map_err(log_error)?
                 .execute([&self.name, key])
@@ -163,6 +188,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached("SELECT 1 FROM spin_key_value WHERE store=$1 AND key=$2 LIMIT 1")
                 .map_err(log_error)?
                 .exists([&self.name, key])
@@ -176,6 +202,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached("SELECT key FROM spin_key_value WHERE store=$1")
                 .map_err(log_error)?
                 .query_map([&self.name], |row| row.get::<_, String>(0))
@@ -213,6 +240,7 @@ impl Store for SqliteStore {
         let the_work = move || {
             let conn = connection.lock().unwrap();
             let mut stmt = conn
+                .inner
                 .prepare_cached("SELECT key FROM spin_key_value WHERE store=$1")
                 .map_err(log_error_v3)?;
             let mut rows = stmt.query([&name]).map_err(log_error_v3)?;
@@ -254,7 +282,7 @@ impl Store for SqliteStore {
             let mut byte_count = std::mem::size_of::<Vec<String>>();
             let row_iter: Vec<Result<(String, Option<Vec<u8>>), Error>> = self.connection
                 .lock()
-                .unwrap()
+                .unwrap().inner
                 .prepare_cached("SELECT key, value FROM spin_key_value WHERE store=:name AND key IN rarray(:keys)")
                 .map_err(log_error)?
                 .query_map(named_params! {":name": &self.name, ":keys": ptr}, |row| {
@@ -288,7 +316,7 @@ impl Store for SqliteStore {
     async fn set_many(&self, key_values: Vec<(String, Vec<u8>)>) -> Result<(), Error> {
         task::block_in_place(|| {
             let mut binding = self.connection.lock().unwrap();
-            let tx = binding.transaction().map_err(log_error)?;
+            let tx = binding.inner.transaction().map_err(log_error)?;
             for kv in key_values {
                 tx.prepare_cached(
                     "INSERT INTO spin_key_value (store, key, value) VALUES ($1, $2, $3)
@@ -311,6 +339,7 @@ impl Store for SqliteStore {
             self.connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached(
                     "DELETE FROM spin_key_value WHERE store=:name AND key IN rarray(:keys)",
                 )
@@ -327,7 +356,7 @@ impl Store for SqliteStore {
         task::block_in_place(|| {
             let mut binding = self.connection.lock().unwrap();
 
-            let tx = binding.transaction().map_err(log_error)?;
+            let tx = binding.inner.transaction().map_err(log_error)?;
 
             let value: Option<Vec<u8>> = tx
                 .prepare_cached("SELECT value FROM spin_key_value WHERE store=$1 AND key=$2")
@@ -369,6 +398,7 @@ impl Store for SqliteStore {
             connection: self.connection.clone(),
             value: Mutex::new(None),
             bucket_rep,
+            _bound: self.bound.clone(),
         }))
     }
 }
@@ -379,6 +409,7 @@ struct CompareAndSwap {
     value: Mutex<Option<Vec<u8>>>,
     connection: Arc<Mutex<Connection>>,
     bucket_rep: u32,
+    _bound: ResourceBound,
 }
 
 #[async_trait]
@@ -389,6 +420,7 @@ impl Cas for CompareAndSwap {
                 .connection
                 .lock()
                 .unwrap()
+                .inner
                 .prepare_cached("SELECT value FROM spin_key_value WHERE store=$1 AND key=$2")
                 .map_err(log_error)?
                 .query_map([&self.name, &self.key], |row| row.get(0))
@@ -420,7 +452,7 @@ impl Cas for CompareAndSwap {
             let mut conn = self.connection.lock().unwrap();
             let rows_changed = match old_value.clone() {
                 Some(old_val) => {
-                    conn
+                    conn.inner
                         .prepare_cached(
                              "UPDATE spin_key_value SET value=:new_value WHERE store=:name and key=:key and value=:old_value")
                         .map_err(log_cas_error)?
@@ -433,7 +465,7 @@ impl Cas for CompareAndSwap {
                         .map_err(log_cas_error)?
                 }
                 None => {
-                    let tx = conn.transaction().map_err(log_cas_error)?;
+                    let tx = conn.inner.transaction().map_err(log_cas_error)?;
                     let rows = tx
                         .prepare_cached(
                             "INSERT INTO spin_key_value (store, key, value) VALUES ($1, $2, $3)

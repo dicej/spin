@@ -107,7 +107,12 @@ impl KeyValueAwsDynamo {
                     aws_config::load_defaults(BehaviorVersion::latest()).await
                 }
             };
-            Client::new(&sdk_config)
+            Client::new(
+                &sdk_config
+                    .into_builder()
+                    .http_client(HyperClientBuilder::new().build(HttpsConnector))
+                    .build(),
+            )
         });
 
         Ok(Self {
@@ -146,6 +151,7 @@ struct AwsDynamoStore {
     client: Client,
     table: Arc<String>,
     consistent_read: bool,
+    semaphore: ResourceSemaphore,
 }
 
 #[derive(Debug, Clone)]
@@ -175,20 +181,46 @@ const VAL: &str = "VAL";
 /// Version key in DynamoDB items used for atomic operations
 const VER: &str = "VER";
 
+impl AwsDynamoStore {
+    pub fn with_connect_options<T, F: Future<Output = T>>(
+        &self,
+        future: F,
+    ) -> impl Future<Output = T> {
+        let (semaphore, bound) = self.semaphore.bounded();
+        async move {
+            let result = spin_factor_outbound_http::with_connect_options(
+                ConnectOptions {
+                    blocked_networks: Default::default(),
+                    connect_timeout: Duration::MAX,
+                    tls_client_config: None,
+                    override_connect_addr: None,
+                    semaphore,
+                },
+                future,
+            )
+            .await;
+            drop(bound);
+            result
+        }
+    }
+}
+
 #[async_trait]
 impl Store for AwsDynamoStore {
     async fn get(&self, key: &str, max_result_bytes: usize) -> Result<Option<Vec<u8>>, Error> {
         let response = self
-            .client
-            .get_item()
-            .consistent_read(self.consistent_read)
-            .table_name(self.table.as_str())
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(key.to_string()),
+            .with_connect_options(
+                self.client
+                    .get_item()
+                    .consistent_read(self.consistent_read)
+                    .table_name(self.table.as_str())
+                    .key(
+                        PK,
+                        aws_sdk_dynamodb::types::AttributeValue::S(key.to_string()),
+                    )
+                    .projection_expression(VAL)
+                    .send(),
             )
-            .projection_expression(VAL)
-            .send()
             .await
             .map_err(log_error)?;
 
@@ -216,40 +248,46 @@ impl Store for AwsDynamoStore {
     }
 
     async fn set(&self, key: &str, value: &[u8]) -> Result<(), Error> {
-        self.client
-            .put_item()
-            .table_name(self.table.as_str())
-            .item(PK, AttributeValue::S(key.to_string()))
-            .item(VAL, AttributeValue::B(Blob::new(value)))
-            .send()
-            .await
-            .map_err(log_error)?;
+        self.with_connect_options(
+            self.client
+                .put_item()
+                .table_name(self.table.as_str())
+                .item(PK, AttributeValue::S(key.to_string()))
+                .item(VAL, AttributeValue::B(Blob::new(value)))
+                .send(),
+        )
+        .await
+        .map_err(log_error)?;
         Ok(())
     }
 
     async fn delete(&self, key: &str) -> Result<(), Error> {
-        self.client
-            .delete_item()
-            .table_name(self.table.as_str())
-            .key(PK, AttributeValue::S(key.to_string()))
-            .send()
-            .await
-            .map_err(log_error)?;
+        self.with_connect_options(
+            self.client
+                .delete_item()
+                .table_name(self.table.as_str())
+                .key(PK, AttributeValue::S(key.to_string()))
+                .send(),
+        )
+        .await
+        .map_err(log_error)?;
         Ok(())
     }
 
     async fn exists(&self, key: &str) -> Result<bool, Error> {
         let GetItemOutput { item, .. } = self
-            .client
-            .get_item()
-            .consistent_read(self.consistent_read)
-            .table_name(self.table.as_str())
-            .key(
-                PK,
-                aws_sdk_dynamodb::types::AttributeValue::S(key.to_string()),
+            .with_connect_options(
+                self.client
+                    .get_item()
+                    .consistent_read(self.consistent_read)
+                    .table_name(self.table.as_str())
+                    .key(
+                        PK,
+                        aws_sdk_dynamodb::types::AttributeValue::S(key.to_string()),
+                    )
+                    .projection_expression(PK)
+                    .send(),
             )
-            .projection_expression(PK)
-            .send()
             .await
             .map_err(log_error)?;
 
@@ -257,35 +295,37 @@ impl Store for AwsDynamoStore {
     }
 
     async fn get_keys(&self, max_result_bytes: usize) -> Result<Vec<String>, Error> {
-        let mut primary_keys = Vec::new();
+        self.with_connect_options(async {
+            let mut primary_keys = Vec::new();
 
-        let mut scan_paginator = self
-            .client
-            .scan()
-            .table_name(self.table.as_str())
-            .projection_expression(PK)
-            .into_paginator()
-            .send();
+            let mut scan_paginator = self
+                .client
+                .scan()
+                .table_name(self.table.as_str())
+                .projection_expression(PK)
+                .into_paginator()
+                .send();
 
-        let mut byte_count = std::mem::size_of::<Vec<String>>();
-        while let Some(output) = scan_paginator.next().await {
-            let scan_output = output.map_err(log_error)?;
-            if let Some(items) = scan_output.items {
-                for mut item in items {
-                    if let Some(AttributeValue::S(pk)) = item.remove(PK) {
-                        byte_count += std::mem::size_of::<String>() + pk.len();
-                        if byte_count > max_result_bytes {
-                            return Err(Error::Other(format!(
-                                "query result exceeds limit of {max_result_bytes} bytes"
-                            )));
+            let mut byte_count = std::mem::size_of::<Vec<String>>();
+            while let Some(output) = scan_paginator.next().await {
+                let scan_output = output.map_err(log_error)?;
+                if let Some(items) = scan_output.items {
+                    for mut item in items {
+                        if let Some(AttributeValue::S(pk)) = item.remove(PK) {
+                            byte_count += std::mem::size_of::<String>() + pk.len();
+                            if byte_count > max_result_bytes {
+                                return Err(Error::Other(format!(
+                                    "query result exceeds limit of {max_result_bytes} bytes"
+                                )));
+                            }
+                            primary_keys.push(pk);
                         }
-                        primary_keys.push(pk);
                     }
                 }
             }
-        }
 
-        Ok(primary_keys)
+            Ok(primary_keys)
+        })
     }
 
     async fn get_keys_async(
@@ -306,7 +346,7 @@ impl Store for AwsDynamoStore {
             .into_paginator()
             .send();
 
-        let the_work = async move {
+        let the_work = self.with_connect_options(async move {
             while let Some(output) = scan_paginator.next().await {
                 let scan_output = output.map_err(log_error_v3)?;
                 if let Some(items) = scan_output.items {
@@ -324,7 +364,7 @@ impl Store for AwsDynamoStore {
             }
 
             Ok(())
-        };
+        });
         tokio::spawn(async move {
             let res = the_work.await;
             _ = err_tx.send(res);
@@ -360,10 +400,12 @@ impl Store for AwsDynamoStore {
                 unprocessed_keys,
                 ..
             } = self
-                .client
-                .batch_get_item()
-                .set_request_items(request_items)
-                .send()
+                .with_connect_options(
+                    self.client
+                        .batch_get_item()
+                        .set_request_items(request_items)
+                        .send(),
+                )
                 .await
                 .map_err(log_error)?;
 
@@ -422,10 +464,12 @@ impl Store for AwsDynamoStore {
             let BatchWriteItemOutput {
                 unprocessed_items, ..
             } = self
-                .client
-                .batch_write_item()
-                .set_request_items(request_items)
-                .send()
+                .with_connect_options(
+                    self.client
+                        .batch_write_item()
+                        .set_request_items(request_items)
+                        .send(),
+                )
                 .await
                 .map_err(log_error)?;
 
@@ -456,10 +500,12 @@ impl Store for AwsDynamoStore {
             let BatchWriteItemOutput {
                 unprocessed_items, ..
             } = self
-                .client
-                .batch_write_item()
-                .set_request_items(request_items)
-                .send()
+                .with_connect_options(
+                    self.client
+                        .batch_write_item()
+                        .set_request_items(request_items)
+                        .send(),
+                )
                 .await
                 .map_err(log_error)?;
 
@@ -471,13 +517,15 @@ impl Store for AwsDynamoStore {
 
     async fn increment(&self, key: String, delta: i64) -> Result<i64, Error> {
         let GetItemOutput { item, .. } = self
-            .client
-            .get_item()
-            .consistent_read(true)
-            .table_name(self.table.as_str())
-            .key(PK, AttributeValue::S(key.clone()))
-            .projection_expression(VAL)
-            .send()
+            .with_connect_options(
+                self.client
+                    .get_item()
+                    .consistent_read(true)
+                    .table_name(self.table.as_str())
+                    .key(PK, AttributeValue::S(key.clone()))
+                    .projection_expression(VAL)
+                    .send(),
+            )
             .await
             .map_err(log_error)?;
 
@@ -518,16 +566,18 @@ impl Store for AwsDynamoStore {
             update = update.condition_expression("attribute_not_exists (#VAL)")
         }
 
-        self.client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .update(update.build().map_err(log_error)?)
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(log_error)?;
+        self.with_connect_options(
+            self.client
+                .transact_write_items()
+                .transact_items(
+                    TransactWriteItem::builder()
+                        .update(update.build().map_err(log_error)?)
+                        .build(),
+                )
+                .send(),
+        )
+        .await
+        .map_err(log_error)?;
 
         Ok(new_val)
     }
@@ -551,13 +601,15 @@ impl Store for AwsDynamoStore {
 impl Cas for CompareAndSwap {
     async fn current(&self, max_result_bytes: usize) -> Result<Option<Vec<u8>>, Error> {
         let GetItemOutput { item, .. } = self
-            .client
-            .get_item()
-            .consistent_read(true)
-            .table_name(self.table.as_str())
-            .key(PK, AttributeValue::S(self.key.clone()))
-            .projection_expression(format!("{VAL},{VER}"))
-            .send()
+            .with_connect_options(
+                self.client
+                    .get_item()
+                    .consistent_read(true)
+                    .table_name(self.table.as_str())
+                    .key(PK, AttributeValue::S(self.key.clone()))
+                    .projection_expression(format!("{VAL},{VER}"))
+                    .send(),
+            )
             .await
             .map_err(log_error)?;
 
@@ -639,20 +691,22 @@ impl Cas for CompareAndSwap {
             CasState::Unknown => (),
         };
 
-        self.client
-            .transact_write_items()
-            .transact_items(
-                TransactWriteItem::builder()
-                    .update(
-                        update
-                            .build()
-                            .map_err(|e| SwapError::Other(format!("{e:?}")))?,
-                    )
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| SwapError::CasFailed(format!("{e:?}")))?;
+        self.with_connect_options(
+            self.client
+                .transact_write_items()
+                .transact_items(
+                    TransactWriteItem::builder()
+                        .update(
+                            update
+                                .build()
+                                .map_err(|e| SwapError::Other(format!("{e:?}")))?,
+                        )
+                        .build(),
+                )
+                .send(),
+        )
+        .await
+        .map_err(|e| SwapError::CasFailed(format!("{e:?}")))?;
 
         Ok(())
     }

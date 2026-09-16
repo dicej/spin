@@ -47,6 +47,7 @@ impl SocketPermitState {
 pub struct SpinSocketsView<'a, T> {
     pub(crate) inner: WasiSocketsCtxView<'a>,
     pub(crate) permit_state: Option<Arc<SocketPermitState>>,
+    pub(crate) descriptor_permit_state: PermitState,
     pub(crate) getter: fn(&mut T) -> WasiSocketsCtxView<'_>,
 }
 
@@ -171,7 +172,9 @@ impl<T> p2_tcp::HostTcpSocket for SpinSocketsView<'_, T> {
         Resource<DynInputStream>,
         Resource<DynOutputStream>,
     )> {
-        p2_tcp::HostTcpSocket::accept(&mut self.inner, this)
+        // We don't currently support accepting incoming connections.
+        _ = this;
+        unreachable!()
     }
 
     fn local_address(
@@ -323,6 +326,7 @@ impl<T> p2_tcp::HostTcpSocket for SpinSocketsView<'_, T> {
 
     fn drop(&mut self, this: Resource<TcpSocket>) -> wasmtime::Result<()> {
         self.release_permit(this.rep());
+        let _permit = self.descriptor_permit_state.active.remove(this.rep());
         p2_tcp::HostTcpSocket::drop(&mut self.inner, this)
     }
 }
@@ -360,7 +364,11 @@ impl<T> p2_tcp_create::Host for SpinSocketsView<'_, T> {
             tracing::warn!("TCP socket creation refused: connection quota exhausted");
             return Err(SocketErrorCode::NewSocketLimit.into());
         };
+        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
         let socket = p2_tcp_create::Host::create_tcp_socket(&mut self.inner, address_family)?;
+        self.descriptor_permit_state
+            .active
+            .insert(socket.rep(), descriptor_permit);
         self.register_permit(socket.rep(), permit);
         Ok(socket)
     }
@@ -471,6 +479,7 @@ impl<T> p2_udp::HostUdpSocket for SpinSocketsView<'_, T> {
 
     fn drop(&mut self, this: Resource<p2_udp::UdpSocket>) -> wasmtime::Result<()> {
         self.release_permit(this.rep());
+        let _permit = self.descriptor_permit_state.active.remove(this.rep());
         p2_udp::HostUdpSocket::drop(&mut self.inner, this)
     }
 }
@@ -538,7 +547,11 @@ impl<T> p2_udp_create::Host for SpinSocketsView<'_, T> {
             tracing::warn!("UDP socket creation refused: connection quota exhausted");
             return Err(SocketErrorCode::NewSocketLimit.into());
         };
+        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
         let sock = p2_udp_create::Host::create_udp_socket(&mut self.inner, address_family).await?;
+        self.descriptor_permit_state
+            .active
+            .insert(socket.rep(), descriptor_permit);
         self.register_permit(sock.rep(), permit);
         Ok(sock)
     }
@@ -582,7 +595,11 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
             tracing::warn!("TCP socket creation refused: connection quota exhausted");
             return Err(p3_ErrorCode::Other(Some("connection quota exhausted".into())).into());
         };
+        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
         let socket = p3_HostTcpSocket::create(&mut self.inner, address_family)?;
+        self.descriptor_permit_state
+            .active
+            .insert(socket.rep(), descriptor_permit);
         self.register_permit(socket.rep(), permit);
         Ok(socket)
     }
@@ -727,6 +744,7 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
 
     fn drop(&mut self, sock: Resource<p3_types::TcpSocket>) -> wasmtime::Result<()> {
         self.release_permit(sock.rep());
+        let _permit = self.descriptor_permit_state.active.remove(sock.rep());
         p3_HostTcpSocket::drop(&mut self.inner, sock)
     }
 }
@@ -758,7 +776,9 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
             tracing::warn!("UDP socket creation refused: connection quota exhausted");
             return Err(p3_ErrorCode::Other(Some("connection quota exhausted".into())).into());
         };
+        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
         let sock = p3_HostUdpSocket::create(&mut self.inner, address_family).await?;
+        self.register_permit(socket.rep(), permit);
         self.register_permit(sock.rep(), permit);
         Ok(sock)
     }
@@ -835,6 +855,7 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
 
     fn drop(&mut self, sock: Resource<p3_types::UdpSocket>) -> wasmtime::Result<()> {
         self.release_permit(sock.rep());
+        let _permit = self.descriptor_permit_state.active.remove(sock.rep());
         p3_HostUdpSocket::drop(&mut self.inner, sock)
     }
 }

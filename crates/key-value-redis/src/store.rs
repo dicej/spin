@@ -10,7 +10,7 @@ use url::Url;
 
 pub struct KeyValueRedis {
     database_url: Url,
-    connection: OnceCell<ConnectionManager>,
+    connection: OnceCell<PermittedConnectionManager>,
 }
 
 impl KeyValueRedis {
@@ -26,20 +26,33 @@ impl KeyValueRedis {
 
 #[async_trait]
 impl StoreManager for KeyValueRedis {
-    async fn get(&self, _name: &str) -> Result<Arc<dyn Store>, Error> {
+    async fn get(
+        &self,
+        _name: &str,
+        semaphore: ResourceSemaphore,
+        bound: ResourceBound,
+    ) -> Result<Arc<dyn Store>, Error> {
         let connection = self
             .connection
             .get_or_try_init(|| async {
-                Client::open(self.database_url.clone())?
-                    .get_connection_manager()
-                    .await
+                let permit = semaphore.acquire().await?;
+                Ok(PermittedConnectionManager {
+                    inner: Client::open(self.database_url.clone())?
+                        .get_connection_manager()
+                        .await?,
+                    permit,
+                })
             })
             .await
             .map_err(log_error)?;
 
+        semaphore.attribute(&connection.permit);
+
         Ok(Arc::new(RedisStore {
             connection: connection.clone(),
             database_url: self.database_url.clone(),
+            semaphore,
+            bound,
         }))
     }
 
@@ -56,12 +69,15 @@ impl StoreManager for KeyValueRedis {
 struct RedisStore {
     connection: ConnectionManager,
     database_url: Url,
+    semaphore: ResourceSemaphore,
+    bound: RedisBound,
 }
 
 struct CompareAndSwap {
     key: String,
     connection: ConnectionManager,
     bucket_rep: u32,
+    _bound: RedisBound,
 }
 
 #[async_trait]
@@ -241,16 +257,21 @@ impl Store for RedisStore {
         bucket_rep: u32,
         key: &str,
     ) -> Result<Arc<dyn Cas>, Error> {
-        let cx = Client::open(self.database_url.clone())
-            .map_err(log_error)?
-            .get_connection_manager()
-            .await
-            .map_err(log_error)?;
+        let permit = self.semaphore.acquire().await?;
+        let cx = PermittedConnectionManager {
+            inner: Client::open(self.database_url.clone())
+                .map_err(log_error)?
+                .get_connection_manager()
+                .await
+                .map_err(log_error)?,
+            permit,
+        };
 
         Ok(Arc::new(CompareAndSwap {
             key: key.to_string(),
             connection: cx,
             bucket_rep,
+            _bound: self.bound.clone(),
         }))
     }
 }
