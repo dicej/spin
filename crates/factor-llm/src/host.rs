@@ -21,6 +21,7 @@ impl v2::Host for InstanceState {
         }
         let mut engine = self.engine.lock().await;
         tracing::Span::current().record("llm.backend", engine.summary());
+        let (semaphore, _bound) = self.semaphore.bounded();
         engine
             .infer(
                 model,
@@ -34,6 +35,7 @@ impl v2::Host for InstanceState {
                     top_p: 0.9,
                 }),
                 MAX_HOST_BUFFERED_BYTES,
+                semaphore,
             )
             .await
     }
@@ -51,8 +53,9 @@ impl v2::Host for InstanceState {
         }
         let mut engine = self.engine.lock().await;
         tracing::Span::current().record("llm.backend", engine.summary());
+        let (semaphore, _bound) = self.semaphore.bounded();
         engine
-            .generate_embeddings(model, data, MAX_HOST_BUFFERED_BYTES)
+            .generate_embeddings(model, data, MAX_HOST_BUFFERED_BYTES, semaphore)
             .await
     }
 

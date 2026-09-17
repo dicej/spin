@@ -116,7 +116,9 @@ impl AzureKeyVaultProvider {
         vault_url: impl Into<String>,
         auth_options: AzureKeyVaultAuthOptions,
     ) -> anyhow::Result<Self> {
-        let http_client = azure_core::new_http_client();
+        let http_client = Client::builder(TokioExecutor::new())
+            .pool_max_idle_per_host(0)
+            .build(HttpsConnector);
         let token_credential = match auth_options {
             AzureKeyVaultAuthOptions::RuntimeConfigValues {
                 client_id,
@@ -145,10 +147,8 @@ impl AzureKeyVaultProvider {
 #[async_trait]
 impl Provider for AzureKeyVaultProvider {
     #[instrument(name = "spin_variables.get_from_azure_key_vault", level = Level::DEBUG, skip(self), err(level = Level::INFO), fields(otel.kind = "client"))]
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
-        let secret = self
-            .secret_client
-            .get(key.as_str())
+    async fn get(&self, key: &Key, semaphore: Semaphore) -> anyhow::Result<Option<String>> {
+        let secret = with_connect_options(semaphore, self.secret_client.get(key.as_str()))
             .await
             .context("Failed to read variable from Azure Key Vault")?;
         Ok(Some(secret.value))

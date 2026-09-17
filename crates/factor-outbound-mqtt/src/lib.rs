@@ -39,7 +39,7 @@ pub struct AppState {
     /// Optional maximum payload size in bytes for MQTT messages. If `None`, no limit is enforced.
     max_payload_size_bytes: Option<usize>,
     /// Semaphore to limit concurrent outbound MQTT connections.
-    pub semaphore: ConnectionSemaphore,
+    pub semaphore: AppSemaphore,
 }
 
 impl Factor for OutboundMqttFactor {
@@ -61,12 +61,7 @@ impl Factor for OutboundMqttFactor {
         let networking = ctx.app_state::<OutboundNetworkingFactor>().ok();
 
         Ok(AppState {
-            semaphore: build_connection_semaphore(
-                networking,
-                "mqtt",
-                config.max_connections,
-                config.wait_timeout,
-            ),
+            semaphore: ctx.semaphore().app(),
             max_payload_size_bytes: config.max_payload_size_bytes,
         })
     }
@@ -83,7 +78,7 @@ impl Factor for OutboundMqttFactor {
         Ok(InstanceState::new(
             allowed_hosts,
             self.create_client.clone(),
-            ctx.app_state().semaphore.clone(),
+            ctx.app_state().semaphore.instance(),
             otel,
             ctx.app_state().max_payload_size_bytes,
         ))

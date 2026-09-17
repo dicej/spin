@@ -810,7 +810,7 @@ impl PermittedTcpStream {
     }
 
     fn attribute_permit(&self) {
-        _ = CONNECT_OPTIONS.try_with(|options| options.semaphore.attribute(&self.permit));
+        CONNECT_OPTIONS.with(|options| options.semaphore.attribute(&self.permit));
     }
 }
 
@@ -842,6 +842,7 @@ impl AsyncWrite for PermittedTcpStream {
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+        self.attribute_permit();
         Pin::new(&mut self.get_mut().inner).poll_flush(cx)
     }
 
@@ -849,6 +850,7 @@ impl AsyncWrite for PermittedTcpStream {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
+        self.attribute_permit();
         Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
     }
 }

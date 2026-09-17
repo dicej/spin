@@ -88,6 +88,7 @@ impl Factor for SqliteFactor {
             allowed_databases,
             ctx.app_state().connection_creators.clone(),
             otel,
+            ctx.app_state().semaphore.instance(),
         ))
     }
 }

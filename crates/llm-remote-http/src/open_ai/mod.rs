@@ -43,6 +43,7 @@ impl LlmWorker for AgentEngine {
         prompt: String,
         params: wasi_llm::InferencingParams,
         max_result_bytes: usize,
+        semaphore: ResourceSemaphore,
     ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
         let client = self.client.get_or_insert_with(Default::default);
 
@@ -72,27 +73,32 @@ impl LlmWorker for AgentEngine {
             verbosity: None,
         };
 
-        let resp = client
-            .request(reqwest::Method::POST, url)
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!(
-                    "POST {CHAT_COMPLETIONS_ENDPOINT} request error: {err}"
-                ))
-            })?;
+        with_connect_options(semaphore, async {
+            let resp = client
+                .request(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(url)
+                        .headers(headers)
+                        .body(body),
+                )
+                .await
+                .map_err(|err| {
+                    wasi_llm::Error::RuntimeError(format!(
+                        "POST {CHAT_COMPLETIONS_ENDPOINT} request error: {err}"
+                    ))
+                })?;
 
-        match serde_json::from_slice::<CreateChatCompletionResponseKind>(
-            &crate::read_body(resp, max_result_bytes).await?,
-        ) {
-            Ok(CreateChatCompletionResponseKind::Success(val)) => Ok(val.into()),
-            Ok(CreateChatCompletionResponseKind::Error { error }) => Err(error.into()),
-            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response for \"POST  {CHAT_COMPLETIONS_ENDPOINT}\": {err}"
-            ))),
-        }
+            match serde_json::from_slice::<CreateChatCompletionResponseKind>(
+                &crate::read_body(resp, max_result_bytes).await?,
+            ) {
+                Ok(CreateChatCompletionResponseKind::Success(val)) => Ok(val.into()),
+                Ok(CreateChatCompletionResponseKind::Error { error }) => Err(error.into()),
+                Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                    "Failed to deserialize response for \"POST  {CHAT_COMPLETIONS_ENDPOINT}\": {err}"
+                ))),
+            }
+        })
     }
 
     async fn generate_embeddings(
@@ -100,6 +106,7 @@ impl LlmWorker for AgentEngine {
         model: wasi_llm::EmbeddingModel,
         data: Vec<String>,
         max_result_bytes: usize,
+        semaphore: ResourceSemaphore,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
         let client = self.client.get_or_insert_with(Default::default);
 
@@ -127,27 +134,32 @@ impl LlmWorker for AgentEngine {
 
         tracing::info!("Sending remote embedding request to {url}");
 
-        let resp = client
-            .request(reqwest::Method::POST, url)
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!(
-                    "POST {EMBEDDINGS_ENDPOINT} request error: {err}"
-                ))
-            })?;
+        with_connect_options(semaphore, async {
+            let resp = client
+                .request(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(url)
+                        .headers(headers)
+                        .body(body),
+                )
+                .await
+                .map_err(|err| {
+                    wasi_llm::Error::RuntimeError(format!(
+                        "POST {EMBEDDINGS_ENDPOINT} request error: {err}"
+                    ))
+                })?;
 
-        match serde_json::from_slice::<CreateEmbeddingResponseKind>(
-            &crate::read_body(resp, max_result_bytes).await?,
-        ) {
-            Ok(CreateEmbeddingResponseKind::Success(val)) => Ok(val.into()),
-            Ok(CreateEmbeddingResponseKind::Error { error }) => Err(error.into()),
-            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response  for \"POST  {EMBEDDINGS_ENDPOINT}\": {err}"
-            ))),
-        }
+            match serde_json::from_slice::<CreateEmbeddingResponseKind>(
+                &crate::read_body(resp, max_result_bytes).await?,
+            ) {
+                Ok(CreateEmbeddingResponseKind::Success(val)) => Ok(val.into()),
+                Ok(CreateEmbeddingResponseKind::Error { error }) => Err(error.into()),
+                Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                    "Failed to deserialize response  for \"POST  {EMBEDDINGS_ENDPOINT}\": {err}"
+                ))),
+            }
+        })
     }
 
     fn url(&self) -> Url {

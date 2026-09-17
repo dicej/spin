@@ -21,7 +21,7 @@ impl<C: Client> InstanceStateInner<C> {
     async fn open_connection(
         &mut self,
         address: &str,
-        permit: ConnectionPermit,
+        permit: ResourcePermit,
     ) -> Result<u32, v2::Error> {
         spin_factor_outbound_networking::record_address_fields(address);
 
@@ -105,7 +105,7 @@ impl<C: Client, T> v3::HostConnectionWithStore<T> for MysqlFactorData<C> {
             (host.inner.clone(), host.semaphore.clone())
         });
         let permit = semaphore
-            .acquire()
+            .acquire(ResourceType::MysqlConnection)
             .await
             .map_err(|_| v3::Error::ConnectionFailed("too many connections".into()))?;
         let mut state = state_arc.lock().await;
@@ -183,7 +183,7 @@ impl<C: Client> v2::HostConnection for InstanceState<C> {
     async fn open(&mut self, address: String) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire()
+            .acquire(ResourceType::MysqlConnection)
             .await
             .map_err(|_| v2::Error::ConnectionFailed("too many connections".into()))?;
         let mut state = self.inner.lock().await;
@@ -250,7 +250,7 @@ macro_rules! delegate {
     ($self:ident.$name:ident($address:expr, $($arg:expr),*)) => {{
         let permit = $self
             .semaphore
-            .acquire()
+            .acquire(ResourceType::MysqlConnection)
             .await
             .map_err(|_| v2::Error::ConnectionFailed("too many connections".into()))?;
         let connection = {

@@ -87,7 +87,7 @@ impl<CF: ClientFactory> Factor for OutboundPgFactor<CF> {
             connections: Default::default(),
             otel,
             builders: Default::default(),
-            semaphore: ctx.app_state().semaphore.clone(),
+            semaphore: ctx.app_state().semaphore.instance(),
         })
     }
 }

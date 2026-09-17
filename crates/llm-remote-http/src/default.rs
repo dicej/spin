@@ -15,11 +15,11 @@ use crate::LlmWorker;
 pub(crate) struct AgentEngine {
     auth_token: String,
     url: Url,
-    client: Option<Client>,
+    client: Option<HttpClient>,
 }
 
 impl AgentEngine {
-    pub fn new(auth_token: String, url: Url, client: Option<Client>) -> Self {
+    pub fn new(auth_token: String, url: Url, client: Option<HttpClient>) -> Self {
         Self {
             auth_token,
             url,
@@ -36,8 +36,11 @@ impl LlmWorker for AgentEngine {
         prompt: String,
         params: wasi_llm::InferencingParams,
         max_result_bytes: usize,
+        semaphore: ResourceSemaphore,
     ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
-        let client = self.client.get_or_insert_with(Default::default);
+        let client = self
+            .client
+            .get_or_insert_with(|| Client::builder(TokioExecutor::new()).build(HttpsConnector));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -69,24 +72,29 @@ impl LlmWorker for AgentEngine {
             .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
         tracing::info!("Sending remote inference request to {infer_url}");
 
-        let resp = client
-            .request(reqwest::Method::POST, infer_url)
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!("POST /infer request error: {err}"))
-            })?;
+        with_connect_options(semaphore, async {
+            let resp = client
+                .request(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(infer_url)
+                        .headers(headers)
+                        .body(body),
+                )
+                .await
+                .map_err(|err| {
+                    wasi_llm::Error::RuntimeError(format!("POST /infer request error: {err}"))
+                })?;
 
-        match serde_json::from_slice::<InferResponseBody>(
-            &crate::read_body(resp, max_result_bytes).await?,
-        ) {
-            Ok(val) => Ok(val.into()),
-            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response for \"POST  /index\": {err}"
-            ))),
-        }
+            match serde_json::from_slice::<InferResponseBody>(
+                &crate::read_body(resp, max_result_bytes).await?,
+            ) {
+                Ok(val) => Ok(val.into()),
+                Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                    "Failed to deserialize response for \"POST  /index\": {err}"
+                ))),
+            }
+        })
     }
 
     async fn generate_embeddings(
@@ -94,8 +102,11 @@ impl LlmWorker for AgentEngine {
         model: wasi_llm::EmbeddingModel,
         data: Vec<String>,
         max_result_bytes: usize,
+        semaphore: ResourceSemaphore,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
-        let client = self.client.get_or_insert_with(Default::default);
+        let client = self
+            .client
+            .get_or_insert_with(|| Client::builder(TokioExecutor::new()).build(HttpsConnector));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -112,29 +123,31 @@ impl LlmWorker for AgentEngine {
         }))
         .map_err(|_| wasi_llm::Error::RuntimeError("Failed to serialize JSON".to_string()))?;
 
-        let resp = client
-            .request(
-                reqwest::Method::POST,
-                self.url.join("/embed").map_err(|_| {
-                    wasi_llm::Error::RuntimeError("Failed to create URL".to_string())
-                })?,
-            )
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!("POST /embed request error: {err}"))
-            })?;
+        with_connect_options(semaphore, async {
+            let resp = client
+                .request(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(self.url.join("/embed").map_err(|_| {
+                            wasi_llm::Error::RuntimeError("Failed to create URL".to_string())
+                        })?)
+                        .headers(headers)
+                        .body(body),
+                )
+                .await
+                .map_err(|err| {
+                    wasi_llm::Error::RuntimeError(format!("POST /embed request error: {err}"))
+                })?;
 
-        match serde_json::from_slice::<EmbeddingResponseBody>(
-            &crate::read_body(resp, max_result_bytes).await?,
-        ) {
-            Ok(val) => Ok(val.into()),
-            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response  for \"POST  /embed\": {err}"
-            ))),
-        }
+            match serde_json::from_slice::<EmbeddingResponseBody>(
+                &crate::read_body(resp, max_result_bytes).await?,
+            ) {
+                Ok(val) => Ok(val.into()),
+                Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                    "Failed to deserialize response  for \"POST  /embed\": {err}"
+                ))),
+            }
+        })
     }
 
     fn url(&self) -> Url {

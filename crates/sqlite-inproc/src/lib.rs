@@ -63,20 +63,33 @@ impl InProcConnection {
         })
     }
 
-    pub fn db_connection(&self) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
+    pub async fn db_connection(&self) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
         if let Some(c) = self.connection.get() {
             return Ok(c.clone());
         }
         // Only create the connection if we failed to get it.
         // We might do duplicate work here if there's a race, but that's fine.
-        let new = self.create_connection()?;
+        let permit = self
+            .semaphore
+            .acquire(ResourceType::LocalSqliteConnection)
+            .await?;
+        let new = self.create_connection(permit)?;
         Ok(self.connection.get_or_init(|| new)).cloned()
     }
 
-    fn create_connection(&self) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
+    fn create_connection(
+        &self,
+        permit: Permit,
+    ) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
         let connection = match &self.location {
-            InProcDatabaseLocation::InMemory => rusqlite::Connection::open_in_memory(),
-            InProcDatabaseLocation::Path(path) => rusqlite::Connection::open(path),
+            InProcDatabaseLocation::InMemory => PermittedConnection {
+                inner: rusqlite::Connection::open_in_memory(),
+                _permit: None,
+            },
+            InProcDatabaseLocation::Path(path) => PermittedConnection {
+                inner: rusqlite::Connection::open(path),
+                _permit: Some(permit),
+            },
         }
         .map_err(|e| sqlite::Error::Io(e.to_string()))?;
         if !self.allow_attach_file {
@@ -103,7 +116,7 @@ impl Connection for InProcConnection {
         parameters: Vec<sqlite::Value>,
         max_result_bytes: usize,
     ) -> Result<sqlite::QueryResult, sqlite::Error> {
-        let connection = self.db_connection()?;
+        let connection = self.db_connection().await?;
         let query = query.to_owned();
         // Tell the tokio runtime that we're going to block while making the query
         tokio::task::spawn_blocking(move || {
@@ -120,7 +133,7 @@ impl Connection for InProcConnection {
         parameters: Vec<v3::Value>,
         max_result_bytes: usize,
     ) -> Result<QueryAsyncResult, v3::Error> {
-        let connection = self.db_connection()?;
+        let connection = self.db_connection().await?;
         let query = query.to_owned();
 
         let (cols_tx, cols_rx) = tokio::sync::oneshot::channel();
@@ -187,7 +200,7 @@ impl Connection for InProcConnection {
     }
 
     async fn execute_batch(&self, statements: &str) -> anyhow::Result<()> {
-        let connection = self.db_connection()?;
+        let connection = self.db_connection().await?;
         let statements = statements.to_owned();
         tokio::task::spawn_blocking(move || {
             let conn = connection.lock().unwrap();
@@ -200,13 +213,13 @@ impl Connection for InProcConnection {
     }
 
     async fn changes(&self) -> Result<u64, sqlite::Error> {
-        let connection = self.db_connection()?;
+        let connection = self.db_connection().await?;
         let conn = connection.lock().unwrap();
         Ok(conn.changes())
     }
 
     async fn last_insert_rowid(&self) -> Result<i64, sqlite::Error> {
-        let connection = self.db_connection()?;
+        let connection = self.db_connection().await?;
         let conn = connection.lock().unwrap();
         Ok(conn.last_insert_rowid())
     }

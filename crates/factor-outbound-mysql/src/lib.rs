@@ -24,7 +24,7 @@ pub struct OutboundMysqlFactor<C = MysqlClient> {
 
 pub struct AppState {
     /// Semaphore to limit concurrent outbound MySQL connections.
-    pub semaphore: ConnectionSemaphore,
+    pub semaphore: AppSemaphore,
 }
 
 impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
@@ -47,12 +47,7 @@ impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
         let networking = ctx.app_state::<OutboundNetworkingFactor>().ok();
 
         Ok(AppState {
-            semaphore: build_connection_semaphore(
-                networking,
-                "mysql",
-                config.max_connections,
-                config.wait_timeout,
-            ),
+            semaphore: ctx.semaphore.app(),
         })
     }
 
@@ -71,7 +66,7 @@ impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
                 connections: Default::default(),
                 otel,
             })),
-            semaphore: ctx.app_state().semaphore.clone(),
+            semaphore: ctx.app_state().semaphore.instance(),
         })
     }
 }
@@ -92,13 +87,13 @@ impl<C> OutboundMysqlFactor<C> {
 
 pub struct InstanceStateInner<C> {
     allowed_hosts: OutboundAllowedHosts,
-    connections: spin_resource_table::Table<(Arc<Mutex<C>>, ConnectionPermit)>,
+    connections: spin_resource_table::Table<(Arc<Mutex<C>>, ResourcePermit)>,
     otel: OtelFactorState,
 }
 
 pub struct InstanceState<C> {
     pub(crate) inner: Arc<Mutex<InstanceStateInner<C>>>,
-    pub semaphore: ConnectionSemaphore,
+    pub semaphore: InstanceSemaphore,
 }
 
 impl<C: Send + 'static> SelfInstanceBuilder for InstanceState<C> {}

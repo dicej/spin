@@ -30,7 +30,7 @@ impl OutboundRedisFactor {
 
 pub struct AppState {
     /// Semaphore to limit concurrent outbound Redis connections.
-    pub semaphore: ConnectionSemaphore,
+    pub semaphore: AppSemaphore,
 }
 
 impl Factor for OutboundRedisFactor {
@@ -53,12 +53,7 @@ impl Factor for OutboundRedisFactor {
         let networking = ctx.app_state::<OutboundNetworkingFactor>().ok();
 
         Ok(AppState {
-            semaphore: build_connection_semaphore(
-                networking,
-                "redis",
-                config.max_connections,
-                config.wait_timeout,
-            ),
+            semaphore: ctx.semaphore.app(),
         })
     }
 
@@ -73,7 +68,7 @@ impl Factor for OutboundRedisFactor {
             allowed_host_checker: AllowedHostChecker::new(outbound_networking.allowed_hosts()),
             blocked_networks: outbound_networking.blocked_networks(),
             connections: spin_resource_table::Table::new(1024),
-            semaphore: ctx.app_state().semaphore.clone(),
+            semaphore: ctx.app_state().semaphore.instance(),
             otel,
         })
     }

@@ -23,6 +23,7 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 [lints]
 workspace = true
 
+[features]
 # Enables reusing connections to the Azure Cosmos DB service.
 connection-pooling = []
 default = ["connection-pooling"]

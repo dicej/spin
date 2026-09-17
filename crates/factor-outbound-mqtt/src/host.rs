@@ -27,7 +27,7 @@ impl InstanceState {
     pub fn new(
         allowed_hosts: OutboundAllowedHosts,
         create_client: Arc<dyn ClientCreator>,
-        semaphore: ConnectionSemaphore,
+        semaphore: InstanceSemaphore,
         otel: OtelFactorState,
         max_payload_size_bytes: Option<usize>,
     ) -> Self {
@@ -66,7 +66,7 @@ impl InstanceState {
     ) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire()
+            .acquire(ResourceType::MqttConnection)
             .await
             .map_err(|_| v2::Error::TooManyConnections)?;
         let client =

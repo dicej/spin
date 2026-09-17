@@ -40,7 +40,7 @@ impl InstanceState {
     ) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire()
+            .acquire(ResourceType::RedisConnection)
             .await
             .map_err(|_| v2::Error::TooManyConnections)?;
         let config = AsyncConnectionConfig::new()
@@ -261,7 +261,7 @@ impl<T: Send> v3::HostConnectionWithStore<T> for crate::RedisFactorData {
         }
 
         let permit = semaphore
-            .acquire()
+            .acquire(ResourceType::RedisConnection)
             .await
             .map_err(|_| v3::Error::TooManyConnections)?;
 

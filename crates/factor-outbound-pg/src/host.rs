@@ -397,11 +397,14 @@ impl<CF: ClientFactory> crate::PgFactorData<CF> {
             (host.client_factory.clone(), host.semaphore.clone())
         });
 
-        let permit = semaphore.acquire().await.map_err(|_| {
-            let err = v4::Error::ConnectionFailed("too many connections".into());
-            traces::mark_as_error(&err, Some(Blame::Guest));
-            err
-        })?;
+        let permit = semaphore
+            .acquire(ResourceType::PostgresConnection)
+            .await
+            .map_err(|_| {
+                let err = v4::Error::ConnectionFailed("too many connections".into());
+                traces::mark_as_error(&err, Some(Blame::Guest));
+                err
+            })?;
 
         let client = cf.get_client(address, root_ca).await.map_err(|e| {
             let err = v4::Error::ConnectionFailed(format!("{e:?}"));
