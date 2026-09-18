@@ -213,8 +213,8 @@ impl<T> p2_types::HostDescriptor for SpinFilesystemView<'_, T> {
     }
 
     fn drop(&mut self, fd: Resource<p2_types::Descriptor>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(fd.rep());
-        p2_types::HostDescriptor::drop(&mut self.inner, fd)?;
+        let _permit = self.permits.remove(&fd.rep());
+        p2_types::HostDescriptor::drop(&mut self.inner, fd)
     }
 
     async fn readlink_at(
@@ -653,7 +653,7 @@ impl<T: 'static> p3_types::HostDescriptorWithStore<T> for SpinFilesystem<T> {
 
 impl<T> p3_types::HostDescriptor for SpinFilesystemView<'_, T> {
     fn drop(&mut self, fd: Resource<Descriptor>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(fd.rep());
+        let _permit = self.permits.remove(&fd.rep());
         p3_types::HostDescriptor::drop(&mut self.inner, fd)
     }
 }

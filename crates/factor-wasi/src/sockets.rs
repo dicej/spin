@@ -8,6 +8,7 @@
 use std::{
     collections::HashMap,
     marker::PhantomData,
+    pin::pin,
     sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
 };
@@ -269,7 +270,7 @@ impl<T> p2_tcp::HostTcpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, this: Resource<TcpSocket>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(this.rep());
+        let _permit = self.permits.remove(&this.rep());
         p2_tcp::HostTcpSocket::drop(&mut self.inner, this)
     }
 }
@@ -303,13 +304,11 @@ impl<T> p2_tcp_create::Host for SpinSocketsView<'_, T> {
     ) -> wasmtime_wasi::p2::SocketResult<Resource<TcpSocket>> {
         // TODO: Update `wasmtime_wasi`'s bindings generation to generate an
         // async function so we don't have to give up on `Poll::Pending`:
-        let permit = match self
-            .semaphore
-            .acquire(Type::Socket)
-            .poll(Context::from_waker(Waker::noop()))
+        let permit = match pin!(self.semaphore.acquire(Type::Socket))
+            .poll(&mut Context::from_waker(Waker::noop()))
         {
-            Poll::Pending => return Err(p2_network::ErrorCode::NewSocketLimit),
-            Poll::Ready(result) => result?,
+            Poll::Pending => return Err(p2_network::ErrorCode::NewSocketLimit.into()),
+            Poll::Ready(result) => result.map_err(|_| p2_network::ErrorCode::NewSocketLimit)?,
         };
         let socket = p2_tcp_create::Host::create_tcp_socket(&mut self.inner, address_family)?;
         self.permits.insert(socket.rep(), permit);
@@ -421,7 +420,7 @@ impl<T> p2_udp::HostUdpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, this: Resource<p2_udp::UdpSocket>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(this.rep());
+        let _permit = self.permits.remove(&this.rep());
         p2_udp::HostUdpSocket::drop(&mut self.inner, this)
     }
 }
@@ -530,13 +529,18 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
     ) -> P3SocketResult<Resource<p3_types::TcpSocket>> {
         // TODO: Update `wasmtime_wasi`'s bindings generation to generate an
         // async function so we don't have to give up on `Poll::Pending`:
-        let permit = match self
-            .semaphore
-            .acquire(Type::Socket)
-            .poll(Context::from_waker(Waker::noop()))
+        let permit = match pin!(self.semaphore.acquire(Type::Socket))
+            .poll(&mut Context::from_waker(Waker::noop()))
         {
-            Poll::Pending => return Err(p3_types::ErrorCode::NewSocketLimit),
-            Poll::Ready(result) => result?,
+            Poll::Pending => {
+                return Err(p3_types::ErrorCode::Other(Some(
+                    "unable to acquire permit for socket".into(),
+                ))
+                .into());
+            }
+            Poll::Ready(result) => {
+                result.map_err(|e| p3_types::ErrorCode::Other(Some(e.to_string())))?
+            }
         };
         let socket = p3_HostTcpSocket::create(&mut self.inner, address_family)?;
         self.permits.insert(socket.rep(), permit);
@@ -682,7 +686,7 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, sock: Resource<p3_types::TcpSocket>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(sock.rep());
+        let _permit = self.permits.remove(&sock.rep());
         p3_HostTcpSocket::drop(&mut self.inner, sock)
     }
 }
@@ -789,7 +793,7 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, sock: Resource<p3_types::UdpSocket>) -> wasmtime::Result<()> {
-        let _permit = self.permits.remove(sock.rep());
+        let _permit = self.permits.remove(&sock.rep());
         p3_HostUdpSocket::drop(&mut self.inner, sock)
     }
 }

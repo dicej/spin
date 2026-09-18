@@ -26,13 +26,15 @@ use hyper_util::{
 };
 use opentelemetry_semantic_conventions::attribute as otel_attribute;
 use spin_factor_outbound_networking::{
-    ComponentTlsClientConfigs, TlsClientConfig,
+    ComponentTlsClientConfigs, ConnectionPermit, ConnectionSemaphore, TlsClientConfig,
     config::{allowed_hosts::OutboundAllowedHosts, blocked_networks::BlockedNetworks},
 };
 use spin_factors::RuntimeFactorsInstanceState;
+use spin_semaphore::{ActivityGuard, Permit, Semaphore, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::TcpStream,
+    task::futures::TaskLocalFuture,
     time::timeout,
 };
 use tokio_rustls::client::TlsStream;
@@ -44,8 +46,6 @@ use wasmtime_wasi_http::{
     p2::{bindings::http::types::ErrorCode, body::HyperOutgoingBody, types::IncomingResponse},
     p3,
 };
-
-use spin_factor_outbound_networking::{ConnectionPermit, ConnectionSemaphore};
 
 use crate::{
     InstanceHttpHooks, OutboundHttpFactor, SelfRequestOrigin,
@@ -332,7 +332,7 @@ struct RequestSender {
     self_request_origin: Option<SelfRequestOrigin>,
     request_interceptor: Option<Arc<dyn OutboundHttpInterceptor>>,
     http_clients: HttpClients,
-    semaphore: ResourceSemaphore,
+    semaphore: Semaphore,
 }
 
 impl RequestSender {
@@ -481,14 +481,15 @@ impl RequestSender {
             None
         };
 
-        let (semaphore, semphore_bound) = self.semaphore.bounded();
+        let guard = ActivityGuard::default();
         let resp = with_connect_options(
             ConnectOptions {
                 blocked_networks: self.blocked_networks,
                 connect_timeout,
                 tls_client_config,
                 override_connect_addr,
-                semaphore,
+                semaphore: self.semaphore,
+                guard: guard.clone(),
             },
             async move {
                 if use_tls {
@@ -531,7 +532,7 @@ impl RequestSender {
             resp: resp.map(|body| {
                 BodyWithAttachment {
                     body,
-                    _attachment: semaphore_bound,
+                    _attachment: guard,
                 }
                 .boxed()
             }),
@@ -592,7 +593,8 @@ pub struct ConnectOptions {
     /// If set, override the address to connect to instead of using the given `uri`'s authority.
     pub override_connect_addr: Option<SocketAddr>,
     /// Semaphore to limit concurrent outbound connections.
-    pub semaphore: ResourceSemaphore,
+    pub semaphore: Semaphore,
+    pub guard: ActivityGuard,
 }
 
 pub fn with_connect_options<F: Future>(
@@ -637,10 +639,7 @@ impl ConnectOptions {
 
         let connect = async {
             // If we're limiting concurrent outbound requests, acquire a permit
-            let permit = self
-                .semaphore
-                .acquire(ResourceType::TcpStreamForHttp)
-                .await?;
+            let permit = self.semaphore.acquire(Type::Socket).await?;
             Ok((TcpStream::connect(&*socket_addrs).await, permit))
         };
 
@@ -798,19 +797,16 @@ pub struct PermittedTcpStream {
     ///
     /// When this stream is dropped, the permit is also dropped, allowing another
     /// connection to be established.
-    permit: ResourcePermit,
+    permit: Permit,
 }
 
 impl PermittedTcpStream {
-    pub fn new(inner: TcpStream, permit: ResourcePermit) -> Self {
-        Self {
-            inner,
-            _permit: permit,
-        }
+    pub fn new(inner: TcpStream, permit: Permit) -> Self {
+        Self { inner, permit }
     }
 
-    fn attribute_permit(&self) {
-        CONNECT_OPTIONS.with(|options| options.semaphore.attribute(&self.permit));
+    fn set_active(&self) {
+        CONNECT_OPTIONS.with(|options| options.guard.add(self.permit.clone()));
     }
 }
 
@@ -826,7 +822,7 @@ impl AsyncRead for PermittedTcpStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        self.attribute_permit();
+        self.set_active();
         Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
     }
 }
@@ -837,12 +833,12 @@ impl AsyncWrite for PermittedTcpStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, std::io::Error>> {
-        self.attribute_permit();
+        self.set_active();
         Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
-        self.attribute_permit();
+        self.set_active();
         Pin::new(&mut self.get_mut().inner).poll_flush(cx)
     }
 
@@ -850,7 +846,7 @@ impl AsyncWrite for PermittedTcpStream {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        self.attribute_permit();
+        self.set_active();
         Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
     }
 }
@@ -897,6 +893,34 @@ fn record_content_length_header(span: &Span, headers: &HeaderMap, attr_name: &'s
         && let Ok(size_str) = content_length.to_str()
     {
         span.set_attribute(attr_name, size_str.to_string());
+    }
+}
+
+pin_project_lite::pin_project! {
+    struct BodyWithAttachment<B, A> {
+        #[pin]
+        body: B,
+        _attachment: A,
+    }
+}
+
+impl<B: http_body::Body, A> http_body::Body for BodyWithAttachment<B, A> {
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        self.project().body.poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.body.size_hint()
     }
 }
 

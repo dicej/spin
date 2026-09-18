@@ -94,32 +94,26 @@ impl spin_http::Host for crate::InstanceState {
             }
         }
 
+        tbc("stop using reqwest and enable http or https");
+
         // Convert http::Request to reqwest::Request
         let req = reqwest::Request::try_from(req).map_err(|_| HttpError::InvalidUrl)?;
 
         // Allow reuse of Client's internal connection pool for multiple requests
         // in a single component execution
         let client = self.hooks.spin_http_client.get_or_insert_with(|| {
-            let mut builder = reqwest::Client::builder().dns_resolver(Arc::new(SpinDnsResolver(
-                self.hooks.blocked_networks.clone(),
-            )));
+            let mut builder = Client::builder(TokioExecutor::new())
+                .build(HttpConnector)
+                .dns_resolver(Arc::new(SpinDnsResolver(
+                    self.hooks.blocked_networks.clone(),
+                )));
             if !self.hooks.connection_pooling_enabled {
                 builder = builder.pool_max_idle_per_host(0);
             }
             builder.build().unwrap()
         });
 
-        // If we're limiting concurrent outbound requests, acquire a permit
-        // Note: since we don't have access to the underlying connection, we can only
-        // limit the number of concurrent requests, not connections.
-        let permit = self
-            .hooks
-            .semaphore
-            .acquire()
-            .await
-            .map_err(|_| HttpError::TooManyRequests)?;
         let resp = client.execute(req).await.map_err(log_reqwest_error)?;
-        drop(permit);
 
         tracing::trace!("Returning response from outbound request to {req_url}");
         span.record(

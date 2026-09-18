@@ -3,6 +3,7 @@
 use anyhow::Result;
 use opentelemetry_semantic_conventions::attribute as otel_attribute;
 use spin_core::wasmtime::component::{Accessor, FutureReader, Resource, StreamReader};
+use spin_semaphore::Type;
 use spin_telemetry::traces::{self, Blame};
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 use spin_world::spin::postgres3_0_0::postgres::{self as v3};
@@ -25,7 +26,7 @@ impl<CF: ClientFactory> InstanceState<CF> {
         address: &str,
         root_ca: Option<HashableCertificate>,
     ) -> Result<Resource<Conn>, v4::Error> {
-        let permit = self.semaphore.acquire().await.map_err(|_| {
+        let permit = self.semaphore.acquire(Type::Socket).await.map_err(|_| {
             let err = v4::Error::ConnectionFailed("too many connections".into());
             traces::mark_as_error(&err, Some(Blame::Guest));
             err
@@ -397,14 +398,11 @@ impl<CF: ClientFactory> crate::PgFactorData<CF> {
             (host.client_factory.clone(), host.semaphore.clone())
         });
 
-        let permit = semaphore
-            .acquire(ResourceType::PostgresConnection)
-            .await
-            .map_err(|_| {
-                let err = v4::Error::ConnectionFailed("too many connections".into());
-                traces::mark_as_error(&err, Some(Blame::Guest));
-                err
-            })?;
+        let permit = semaphore.acquire(Type::Socket).await.map_err(|_| {
+            let err = v4::Error::ConnectionFailed("too many connections".into());
+            traces::mark_as_error(&err, Some(Blame::Guest));
+            err
+        })?;
 
         let client = cf.get_client(address, root_ca).await.map_err(|e| {
             let err = v4::Error::ConnectionFailed(format!("{e:?}"));

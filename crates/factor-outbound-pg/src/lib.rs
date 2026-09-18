@@ -17,6 +17,7 @@ use spin_factor_outbound_networking::{
 use spin_factors::{
     ConfigureAppContext, Factor, PrepareContext, RuntimeFactors, SelfInstanceBuilder, anyhow,
 };
+use spin_semaphore::{Permit, Semaphore};
 
 pub struct OutboundPgFactor<CF = crate::client::PooledTokioClientFactory> {
     _phantom: std::marker::PhantomData<CF>,
@@ -87,7 +88,9 @@ impl<CF: ClientFactory> Factor for OutboundPgFactor<CF> {
             connections: Default::default(),
             otel,
             builders: Default::default(),
-            semaphore: ctx.app_state().semaphore.instance(),
+            semaphore: ctx
+                .semaphore_builder()
+                .with_connection_semaphore(ctx.app_state().semaphore.clone()),
         })
     }
 }
@@ -109,13 +112,10 @@ impl<C> OutboundPgFactor<C> {
 pub struct InstanceState<CF: ClientFactory> {
     allowed_host_checker: AllowedHostChecker,
     client_factory: Arc<CF>,
-    connections: spin_resource_table::Table<(
-        CF::Client,
-        spin_factor_outbound_networking::ConnectionPermit,
-    )>,
+    connections: spin_resource_table::Table<(CF::Client, Permit)>,
     otel: OtelFactorState,
     builders: spin_resource_table::Table<host::ConnectionBuilder>,
-    pub semaphore: ConnectionSemaphore,
+    pub semaphore: Semaphore,
 }
 
 impl<CF: ClientFactory> SelfInstanceBuilder for InstanceState<CF> {}

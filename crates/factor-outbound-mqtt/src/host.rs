@@ -8,6 +8,7 @@ use spin_core::{
 use spin_factor_otel::OtelFactorState;
 use spin_factor_outbound_networking::config::allowed_hosts::OutboundAllowedHosts;
 use spin_factor_outbound_networking::{ConnectionPermit, ConnectionSemaphore};
+use spin_semaphore::{Permit, Semaphore, Type};
 use spin_world::spin::mqtt::mqtt as v3;
 use spin_world::v2::mqtt as v2;
 use tracing::{Level, instrument};
@@ -16,9 +17,9 @@ use crate::{ClientCreator, allowed_hosts::AllowedHostChecker};
 
 pub struct InstanceState {
     allowed_hosts: AllowedHostChecker,
-    connections: spin_resource_table::Table<(Arc<dyn MqttClient>, ConnectionPermit)>,
+    connections: spin_resource_table::Table<(Arc<dyn MqttClient>, Permit)>,
     create_client: Arc<dyn ClientCreator>,
-    semaphore: ConnectionSemaphore,
+    semaphore: Semaphore,
     otel: OtelFactorState,
     max_payload_size_bytes: Option<usize>,
 }
@@ -27,7 +28,7 @@ impl InstanceState {
     pub fn new(
         allowed_hosts: OutboundAllowedHosts,
         create_client: Arc<dyn ClientCreator>,
-        semaphore: InstanceSemaphore,
+        semaphore: Semaphore,
         otel: OtelFactorState,
         max_payload_size_bytes: Option<usize>,
     ) -> Self {
@@ -66,7 +67,7 @@ impl InstanceState {
     ) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire(ResourceType::MqttConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v2::Error::TooManyConnections)?;
         let client =
@@ -142,7 +143,7 @@ impl<T: Send> v3::HostConnectionWithStore<T> for crate::MqttFactorData {
         }
 
         let permit = semaphore
-            .acquire()
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v3::Error::TooManyConnections)?;
 

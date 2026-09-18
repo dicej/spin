@@ -4,6 +4,7 @@ use anyhow::Result;
 use opentelemetry_semantic_conventions::attribute as otel_attribute;
 use spin_core::wasmtime::component::{Accessor, FutureReader, Resource, StreamReader};
 use spin_factor_outbound_networking::ConnectionPermit;
+use spin_semaphore::{Permit, Type};
 use spin_telemetry::traces::{self, Blame};
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 use spin_world::spin::mysql::mysql as v3;
@@ -18,11 +19,7 @@ use crate::client::Client;
 use crate::{InstanceState, InstanceStateInner, MysqlFactorData};
 
 impl<C: Client> InstanceStateInner<C> {
-    async fn open_connection(
-        &mut self,
-        address: &str,
-        permit: ResourcePermit,
-    ) -> Result<u32, v2::Error> {
+    async fn open_connection(&mut self, address: &str, permit: Permit) -> Result<u32, v2::Error> {
         spin_factor_outbound_networking::record_address_fields(address);
 
         if !self.is_address_allowed(address).await.map_err(|e| {
@@ -105,7 +102,7 @@ impl<C: Client, T> v3::HostConnectionWithStore<T> for MysqlFactorData<C> {
             (host.inner.clone(), host.semaphore.clone())
         });
         let permit = semaphore
-            .acquire(ResourceType::MysqlConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v3::Error::ConnectionFailed("too many connections".into()))?;
         let mut state = state_arc.lock().await;
@@ -183,7 +180,7 @@ impl<C: Client> v2::HostConnection for InstanceState<C> {
     async fn open(&mut self, address: String) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire(ResourceType::MysqlConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v2::Error::ConnectionFailed("too many connections".into()))?;
         let mut state = self.inner.lock().await;
@@ -250,7 +247,7 @@ macro_rules! delegate {
     ($self:ident.$name:ident($address:expr, $($arg:expr),*)) => {{
         let permit = $self
             .semaphore
-            .acquire(ResourceType::MysqlConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v2::Error::ConnectionFailed("too many connections".into()))?;
         let connection = {

@@ -23,6 +23,7 @@ spin-factor-otel = { path = "../factor-otel" }
 spin-factor-outbound-networking = { path = "../factor-outbound-networking" }
 spin-factors = { path = "../factors" }
 spin-resource-table = { path = "../table" }
+spin-semaphore = { path = "../semaphore" }
 spin-telemetry = { path = "../telemetry" }
 spin-world = { path = "../world" }
 spin-wasi-async = { path = "../wasi-async" }

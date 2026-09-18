@@ -25,6 +25,7 @@ use spin_factors::{
     ConfigureAppContext, Factor, FactorData, PrepareContext, RuntimeFactors, SelfInstanceBuilder,
     anyhow,
 };
+use spin_semaphore::Semaphore;
 use wasmtime_wasi_http::WasiHttpCtx;
 
 pub use wasmtime_wasi_http::p2::{
@@ -87,7 +88,10 @@ impl Factor for OutboundHttpFactor {
                 spin_http_client: None,
                 wasi_http_clients: ctx.app_state().wasi_http_clients.clone(),
                 connection_pooling_enabled: ctx.app_state().connection_pooling_enabled,
-                semaphore: ctx.app_state().semaphore.clone(),
+                semaphore: ctx
+                    .semaphore_builder()
+                    .with_connection_semaphore(ctx.app_state().semaphore.clone())
+                    .build(),
                 otel,
             },
         })
@@ -119,7 +123,7 @@ struct InstanceHttpHooks {
     /// Whether connection pooling is enabled for this instance.
     connection_pooling_enabled: bool,
     /// Semaphore to limit concurrent outbound connections.
-    semaphore: ConnectionSemaphore,
+    semaphore: Semaphore,
     /// Manages access to the OtelFactor state.
     otel: OtelFactorState,
 }

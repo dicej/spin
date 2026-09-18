@@ -9,6 +9,7 @@ use spin_core::{AsState, Component, Config, Engine, State, Store, StoreBuilder, 
 use spin_factor_wasi::{DummyFilesMounter, WasiFactor};
 use spin_factors::{App, AsInstanceState, RuntimeFactors};
 use spin_locked_app::locked::LockedApp;
+use spin_semaphore::Semaphore;
 use tokio::fs;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -139,7 +140,8 @@ async fn run_test(
     }))?;
     let app = App::new("test-app", locked);
     let configured_app = factors.configure_app(app, Default::default())?;
-    let mut builders = factors.prepare(&configured_app, "test-component")?;
+    let mut builders =
+        factors.prepare(&configured_app, "test-component", &Semaphore::unlimited())?;
     builders.wasi().args(args);
     let instance_state = factors.build_instance_state(builders)?;
     let state = TestState {

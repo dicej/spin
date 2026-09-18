@@ -76,7 +76,8 @@ impl WasiFactor {
                 ctx: state.ctx.sockets(),
                 table,
             },
-            permit_state: state.socket_permit_state.clone(),
+            semaphore: state.semaphore.clone(),
+            permits: Default::default(),
             getter,
         })
     }
@@ -148,7 +149,8 @@ trait InitContextExt: InitContext<WasiFactor> {
                 ctx: state.ctx.filesystem(),
                 table,
             },
-            permit_state: todo!(),
+            semaphore: state.semaphore.clone(),
+            permits: Default::default(),
             getter: Self::get_filesystem,
         }
     }
@@ -209,7 +211,8 @@ trait InitContextExt: InitContext<WasiFactor> {
                 ctx: state.ctx.sockets(),
                 table,
             },
-            permit_state: state.socket_permit_state.clone(),
+            semaphore: state.semaphore.clone(),
+            permits: Default::default(),
             getter: Self::get_wasi_sockets,
         }
     }
@@ -428,7 +431,7 @@ impl Factor for WasiFactor {
 
         let mut builder = InstanceBuilder {
             ctx: wasi_ctx,
-            socket_permit_state: None,
+            semaphore: ctx.semaphore_builder().build(),
         };
 
         // Apply environment variables
@@ -557,11 +560,11 @@ impl FactorInstanceBuilder for InstanceBuilder {
     fn build(self) -> anyhow::Result<Self::InstanceState> {
         let InstanceBuilder {
             ctx: mut wasi_ctx,
-            socket_permit_state,
+            semaphore,
         } = self;
         Ok(InstanceState {
             ctx: wasi_ctx.build(),
-            socket_permit_state,
+            semaphore,
         })
     }
 }

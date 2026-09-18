@@ -9,6 +9,7 @@ use spin_core::wasmtime::component::{Accessor, Resource};
 use spin_factor_otel::OtelFactorState;
 use spin_factor_outbound_networking::ConnectionSemaphore;
 use spin_factor_outbound_networking::config::blocked_networks::BlockedNetworks;
+use spin_semaphore::{Permit, Semaphore, Type};
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 use spin_world::spin::redis::redis as v3;
 use spin_world::v1::{redis as v1, redis_types};
@@ -21,11 +22,8 @@ use crate::allowed_hosts::AllowedHostChecker;
 pub struct InstanceState {
     pub(crate) allowed_host_checker: AllowedHostChecker,
     pub blocked_networks: BlockedNetworks,
-    pub connections: spin_resource_table::Table<(
-        MultiplexedConnection,
-        spin_factor_outbound_networking::ConnectionPermit,
-    )>,
-    pub semaphore: ConnectionSemaphore,
+    pub connections: spin_resource_table::Table<(MultiplexedConnection, Permit)>,
+    pub semaphore: Semaphore,
     pub otel: OtelFactorState,
 }
 
@@ -40,7 +38,7 @@ impl InstanceState {
     ) -> Result<Resource<v2::Connection>, v2::Error> {
         let permit = self
             .semaphore
-            .acquire(ResourceType::RedisConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v2::Error::TooManyConnections)?;
         let config = AsyncConnectionConfig::new()
@@ -261,7 +259,7 @@ impl<T: Send> v3::HostConnectionWithStore<T> for crate::RedisFactorData {
         }
 
         let permit = semaphore
-            .acquire(ResourceType::RedisConnection)
+            .acquire(Type::Socket)
             .await
             .map_err(|_| v3::Error::TooManyConnections)?;
 

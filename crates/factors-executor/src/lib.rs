@@ -8,7 +8,7 @@ use spin_factors::{
     AsInstanceState, ConfiguredApp, Factor, HasInstanceBuilder, RuntimeFactors,
     RuntimeFactorsInstanceState,
 };
-use spin_semaphore::SemaphoreBuilder;
+use spin_semaphore::{Semaphore, SemaphoreBuilder};
 
 /// A FactorsExecutor manages execution of a Spin app.
 ///
@@ -488,7 +488,7 @@ mod tests {
             .load_app(app, Default::default(), &DummyComponentLoader, None, ())
             .await?;
 
-        let mut instance_builder = factors_app.prepare("empty")?;
+        let mut instance_builder = factors_app.prepare("empty", &Semaphore::unlimited())?;
 
         assert_eq!(instance_builder.app_component().id(), "empty");
 

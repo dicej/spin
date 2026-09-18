@@ -7,7 +7,7 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use futures_util::FutureExt as _;
 use opentelemetry_semantic_conventions::attribute as otel_attribute;
 use spin_factor_variables::VariablesFactor;
-use spin_factor_wasi::{SocketAddrUse, SocketPermitState, WasiFactor};
+use spin_factor_wasi::{SocketAddrUse, WasiFactor};
 use spin_factors::{
     ConfigureAppContext, Error, Factor, FactorInstanceBuilder, PrepareContext, RuntimeFactors,
     anyhow::{self, Context},
@@ -142,8 +142,9 @@ impl Factor for OutboundNetworkingFactor {
             .components()
             .map(|c| c.id().to_string())
             .collect::<Vec<_>>();
+        let semaphore = ctx.semaphore_builder().build();
         let allowed_hosts_future = async move {
-            let prepared = resolver.prepare().await.inspect_err(|err| {
+            let prepared = resolver.prepare(&semaphore).await.inspect_err(|err| {
                 tracing::error!(
                     %err, "error.type" = "variable_resolution_failed",
                     "Error resolving variables when checking request against allowed outbound hosts",
@@ -164,16 +165,12 @@ impl Factor for OutboundNetworkingFactor {
             self.disallowed_host_handler.clone(),
         );
         let blocked_networks = ctx.app_state().blocked_networks.clone();
-        let permit_state = ctx
-            .app_state()
-            .socket_connection_semaphore
-            .clone()
-            .map(SocketPermitState::new);
+        let semaphore = ctx.app_state().socket_connection_semaphore.clone();
 
         match ctx.instance_builder::<WasiFactor>() {
             Ok(wasi_builder) => {
-                if let Some(state) = permit_state {
-                    wasi_builder.set_socket_permit_state(state);
+                if let Some(semaphore) = semaphore {
+                    wasi_builder.set_connection_semaphore(semaphore);
                 }
 
                 let allowed_hosts = allowed_hosts.clone();

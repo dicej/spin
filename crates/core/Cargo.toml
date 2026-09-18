@@ -18,6 +18,7 @@ spin-factor-wasi = { path = "../factor-wasi" }
 spin-factors = { path = "../factors" }
 spin-factors-test = { path = "../factors-test" }
 spin-locked-app = { path = "../locked-app" }
+spin-semaphore = { path = "../semaphore" }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 wasmtime-wasi = { workspace = true }
 

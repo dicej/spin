@@ -13,6 +13,7 @@ use spin_factor_outbound_networking::{
     config::allowed_hosts::OutboundAllowedHosts,
 };
 use spin_factors::{Factor, FactorData, InitContext, RuntimeFactors, SelfInstanceBuilder};
+use spin_semaphore::{Permit, Semaphore};
 use spin_world::spin::mysql::mysql as v3;
 use spin_world::v1::mysql as v1;
 use spin_world::v2::mysql as v2;
@@ -24,7 +25,7 @@ pub struct OutboundMysqlFactor<C = MysqlClient> {
 
 pub struct AppState {
     /// Semaphore to limit concurrent outbound MySQL connections.
-    pub semaphore: AppSemaphore,
+    pub semaphore: ConnectionSemaphore,
 }
 
 impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
@@ -47,7 +48,12 @@ impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
         let networking = ctx.app_state::<OutboundNetworkingFactor>().ok();
 
         Ok(AppState {
-            semaphore: ctx.semaphore.app(),
+            semaphore: build_connection_semaphore(
+                networking,
+                "mysql",
+                config.max_connections,
+                config.wait_timeout,
+            ),
         })
     }
 
@@ -66,7 +72,10 @@ impl<C: Send + Sync + Client + 'static> Factor for OutboundMysqlFactor<C> {
                 connections: Default::default(),
                 otel,
             })),
-            semaphore: ctx.app_state().semaphore.instance(),
+            semaphore: ctx
+                .semaphore_builder()
+                .with_connection_semaphore(ctx.app_state().semaphore.clone())
+                .build(),
         })
     }
 }
@@ -87,13 +96,13 @@ impl<C> OutboundMysqlFactor<C> {
 
 pub struct InstanceStateInner<C> {
     allowed_hosts: OutboundAllowedHosts,
-    connections: spin_resource_table::Table<(Arc<Mutex<C>>, ResourcePermit)>,
+    connections: spin_resource_table::Table<(Arc<Mutex<C>>, Permit)>,
     otel: OtelFactorState,
 }
 
 pub struct InstanceState<C> {
     pub(crate) inner: Arc<Mutex<InstanceStateInner<C>>>,
-    pub semaphore: InstanceSemaphore,
+    pub semaphore: Semaphore,
 }
 
 impl<C: Send + 'static> SelfInstanceBuilder for InstanceState<C> {}

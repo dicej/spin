@@ -21,6 +21,7 @@ spin-factors = { path = "../factors" }
 spin-locked-app = { path = "../locked-app" }
 spin-manifest = { path = "../manifest" }
 spin-outbound-networking-config = { path = "../outbound-networking-config" }
+spin-semaphore = { path = "../semaphore" }
 spin-serde = { path = "../serde" }
 tokio = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }

@@ -3,6 +3,7 @@ use spin_core::async_trait;
 use spin_factor_sqlite::SqliteFactor;
 use spin_factors::RuntimeFactors;
 use spin_factors_executor::ExecutorHooks;
+use spin_semaphore::Semaphore;
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 
 /// The default sqlite label
@@ -187,6 +188,7 @@ mod tests {
         async fn create_connection(
             &self,
             label: &str,
+            _semaphore: &Semaphore,
         ) -> Result<Arc<dyn Connection + 'static>, v3::Error> {
             self.push(label);
             Ok(Arc::new(MockConnection {

@@ -1,5 +1,6 @@
 use crate::sockets::{SpinSockets, SpinSocketsView};
 use spin_factors::anyhow::Result;
+use spin_semaphore::Type;
 use std::mem;
 use wasmtime::component::{Linker, Resource, ResourceTable};
 use wasmtime_wasi::TrappableError;
@@ -1485,7 +1486,7 @@ impl<T> wasi::sockets::udp::HostUdpSocket for SpinSocketsView<'_, T> {
         // (double-drop) is unreachable from a guest, and `release_permit` is idempotent
         // anyway since `HashMap::remove` is a no-op for absent keys.
         let me = self.table.delete(rep)?;
-        self.release_permit(socket_rep);
+        let _permit = self.permits.remove(&socket_rep);
         let socket = match me {
             UdpSocket::Initial(s) => s,
             UdpSocket::Connecting(s, _) => s,
@@ -1518,7 +1519,7 @@ impl<T> wasi::sockets::udp_create_socket::Host for SpinSocketsView<'_, T> {
         // cause release_permit at drop time to look up the wrong rep and silently leak the
         // semaphore slot. Instead, quota is checked explicitly here and the permit is
         // registered under the wrapper rep.
-        let Ok(permit) = self.try_acquire() else {
+        let Ok(permit) = self.semaphore.acquire(Type::Socket).await else {
             tracing::warn!("UDP socket creation refused: connection quota exhausted");
             return Ok(Err(SocketErrorCode::NewSocketLimit));
         };
@@ -1531,7 +1532,7 @@ impl<T> wasi::sockets::udp_create_socket::Host for SpinSocketsView<'_, T> {
             Err(e) => return Ok(Err(e)),
         };
         let wrapped = self.table.push(UdpSocket::Initial(socket))?;
-        self.register_permit(wrapped.rep(), permit);
+        self.permits.insert(wrapped.rep(), permit);
         Ok(Ok(wrapped))
     }
 }

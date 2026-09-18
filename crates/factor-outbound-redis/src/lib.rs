@@ -12,6 +12,7 @@ use spin_factors::{
     ConfigureAppContext, Factor, FactorData, PrepareContext, RuntimeFactors, SelfInstanceBuilder,
     anyhow,
 };
+use spin_semaphore::Semaphore;
 use spin_world::spin::redis::redis as v3;
 
 use crate::allowed_hosts::AllowedHostChecker;
@@ -30,7 +31,7 @@ impl OutboundRedisFactor {
 
 pub struct AppState {
     /// Semaphore to limit concurrent outbound Redis connections.
-    pub semaphore: AppSemaphore,
+    pub semaphore: ConnectionSemaphore,
 }
 
 impl Factor for OutboundRedisFactor {
@@ -53,7 +54,12 @@ impl Factor for OutboundRedisFactor {
         let networking = ctx.app_state::<OutboundNetworkingFactor>().ok();
 
         Ok(AppState {
-            semaphore: ctx.semaphore.app(),
+            semaphore: build_connection_semaphore(
+                networking,
+                "redis",
+                config.max_connections,
+                config.wait_timeout,
+            ),
         })
     }
 
@@ -68,7 +74,10 @@ impl Factor for OutboundRedisFactor {
             allowed_host_checker: AllowedHostChecker::new(outbound_networking.allowed_hosts()),
             blocked_networks: outbound_networking.blocked_networks(),
             connections: spin_resource_table::Table::new(1024),
-            semaphore: ctx.app_state().semaphore.instance(),
+            semaphore: ctx
+                .semaphore_builder()
+                .with_connection_semaphore(ctx.app_state().semaphore.clone())
+                .build(),
             otel,
         })
     }

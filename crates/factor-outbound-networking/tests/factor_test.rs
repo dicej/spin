@@ -10,6 +10,7 @@ use spin_factor_wasi::{DummyFilesMounter, WasiFactor};
 use spin_factors::anyhow::Context as _;
 use spin_factors::{App, RuntimeFactors, anyhow};
 use spin_factors_test::{TestEnvironment, toml};
+use spin_semaphore::Semaphore;
 use spin_world::spin::mqtt::mqtt as v3_mqtt;
 use spin_world::v2::mqtt as v2_mqtt;
 use wasmtime_wasi::p2::bindings::sockets::instance_network::Host;
@@ -232,7 +233,7 @@ async fn socket_quota_releases_on_instance_drop() -> anyhow::Result<()> {
 
     // First instance: fill the quota (1 socket)
     {
-        let builders = factors.prepare(&configured_app, &component_id)?;
+        let builders = factors.prepare(&configured_app, &component_id, &Semaphore::unlimited())?;
         let mut state = factors.build_instance_state(builders)?;
         let mut sockets = WasiFactor::get_sockets_impl(&mut state, get_sockets_view).unwrap();
         let net = sockets.instance_network()?;
@@ -242,7 +243,7 @@ async fn socket_quota_releases_on_instance_drop() -> anyhow::Result<()> {
     }
 
     // Second instance: quota should be fully available again
-    let builders = factors.prepare(&configured_app, &component_id)?;
+    let builders = factors.prepare(&configured_app, &component_id, &Semaphore::unlimited())?;
     let mut state = factors.build_instance_state(builders)?;
     let mut sockets = WasiFactor::get_sockets_impl(&mut state, get_sockets_view).unwrap();
     let net = sockets.instance_network()?;
