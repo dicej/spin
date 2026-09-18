@@ -3,6 +3,7 @@ use std::{collections::HashMap, hash::Hash, sync::Arc};
 use serde::Deserialize;
 use spin_expressions::{Key, Provider, async_trait::async_trait};
 use spin_factors::anyhow;
+use spin_semaphore::Semaphore;
 
 pub use source::*;
 mod source;
@@ -15,7 +16,7 @@ pub struct StaticVariablesProvider {
 
 #[async_trait]
 impl Provider for StaticVariablesProvider {
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
+    async fn get(&self, key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
         Ok(self.values.get(key.as_str()).cloned())
     }
 

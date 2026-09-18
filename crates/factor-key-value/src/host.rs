@@ -7,6 +7,7 @@ use spin_core::{
 };
 use spin_factor_otel::OtelFactorState;
 use spin_resource_table::Table;
+use spin_semaphore::Semaphore;
 use spin_telemetry::traces::{self, Blame};
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 use spin_world::spin::key_value::key_value as v3;
@@ -21,7 +22,7 @@ pub use key_value::Error;
 
 #[async_trait]
 pub trait StoreManager: Sync + Send {
-    async fn get(&self, name: &str) -> Result<Arc<dyn Store>, Error>;
+    async fn get(&self, name: &str, semaphore: &Semaphore) -> Result<Arc<dyn Store>, Error>;
     fn is_defined(&self, store_name: &str) -> bool;
 
     /// A human-readable summary of the given store's configuration
@@ -72,7 +73,7 @@ pub struct KeyValueDispatch {
     manager: Arc<dyn StoreManager>,
     stores: Table<Arc<dyn Store>>,
     compare_and_swaps: Table<Arc<dyn Cas>>,
-    semaphore: ConnectionSemaphore,
+    semaphore: Semaphore,
     otel: OtelFactorState,
 }
 
@@ -80,38 +81,8 @@ impl KeyValueDispatch {
     pub fn new(
         allowed_stores: HashSet<String>,
         manager: Arc<dyn StoreManager>,
-        app_id: Arc<str>,
-    ) -> Self {
-        Self::new_with_capacity_and_semaphore(
-            allowed_stores,
-            manager,
-            DEFAULT_STORE_TABLE_CAPACITY,
-            ConnectionSemaphore::new(None, None, "key-value", app_id, None),
-            Default::default(),
-        )
-    }
-
-    pub fn new_with_capacity(
-        allowed_stores: HashSet<String>,
-        manager: Arc<dyn StoreManager>,
         capacity: u32,
-        app_id: Arc<str>,
-        otel: OtelFactorState,
-    ) -> Self {
-        Self::new_with_capacity_and_semaphore(
-            allowed_stores,
-            manager,
-            capacity,
-            ConnectionSemaphore::new(None, None, "key-value", app_id, None),
-            otel,
-        )
-    }
-
-    pub fn new_with_capacity_and_semaphore(
-        allowed_stores: HashSet<String>,
-        manager: Arc<dyn StoreManager>,
-        capacity: u32,
-        semaphore: ConnectionSemaphore,
+        semaphore: Semaphore,
         otel: OtelFactorState,
     ) -> Self {
         Self {
@@ -191,7 +162,7 @@ impl key_value::HostStore for KeyValueDispatch {
         self.otel.reparent_tracing_span();
         Ok(async {
             if self.allowed_stores.contains(&name) {
-                let store = self.manager.get(&name).await?;
+                let store = self.manager.get(&name, &self.semaphore).await?;
                 store.after_open().await?;
                 let store_idx = self
                     .stores

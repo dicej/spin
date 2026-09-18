@@ -11,16 +11,20 @@ use crate::{InstanceState, VariablesFactorData};
 impl<T: Send> v3::HostWithStore<T> for VariablesFactorData {
     #[instrument(name = "spin_variables.get", skip(accessor), fields(otel.kind = "client"))]
     async fn get(accessor: &Accessor<T, Self>, key: String) -> Result<String, v3::Error> {
-        let (resolver, component_id) = accessor.with(|mut access| {
+        let (resolver, component_id, semaphore) = accessor.with(|mut access| {
             let host = access.get();
             host.otel.reparent_tracing_span();
-            (host.expression_resolver.clone(), host.component_id.clone())
+            (
+                host.expression_resolver.clone(),
+                host.component_id.clone(),
+                host.semaphore.clone(),
+            )
         });
 
         let key = spin_expressions::Key::new(&key).map_err(expressions_to_variables_err_v3)?;
 
         resolver
-            .resolve(&component_id, key)
+            .resolve(&component_id, key, &semaphore)
             .await
             .map_err(expressions_to_variables_err_v3)
     }
@@ -38,7 +42,7 @@ impl v2::Host for InstanceState {
         self.otel.reparent_tracing_span();
         let key = spin_expressions::Key::new(&key).map_err(expressions_to_variables_err)?;
         self.expression_resolver
-            .resolve(&self.component_id, key)
+            .resolve(&self.component_id, key, &self.semaphore)
             .await
             .map_err(expressions_to_variables_err)
     }
@@ -81,7 +85,7 @@ impl wasi_config::store::Host for InstanceState {
     async fn get_all(&mut self) -> Result<Vec<(String, String)>, wasi_config::store::Error> {
         let all = self
             .expression_resolver
-            .resolve_all(&self.component_id)
+            .resolve_all(&self.component_id, &self.semaphore)
             .await;
         all.map_err(|e| {
             match expressions_to_variables_err(e) {

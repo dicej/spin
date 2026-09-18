@@ -8,6 +8,7 @@ use std::{
 use serde::Deserialize;
 use spin_expressions::{Key, Provider};
 use spin_factors::anyhow::{self, Context as _};
+use spin_semaphore::Semaphore;
 use spin_world::async_trait;
 use tracing::{Level, instrument};
 
@@ -128,8 +129,8 @@ fn load_dotenv(dotenv_path: &Path) -> anyhow::Result<HashMap<String, String>> {
 
 #[async_trait]
 impl Provider for EnvVariablesProvider {
-    #[instrument(name = "spin_variables.get_from_env", level = Level::DEBUG, skip(self), err(level = Level::INFO))]
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
+    #[instrument(name = "spin_variables.get_from_env", level = Level::DEBUG, skip(self, _semaphore), err(level = Level::INFO))]
+    async fn get(&self, key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
         tokio::task::block_in_place(|| self.get_sync(key))
     }
 

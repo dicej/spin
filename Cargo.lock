@@ -9274,6 +9274,7 @@ dependencies = [
  "async-trait",
  "futures",
  "spin-locked-app",
+ "spin-semaphore",
  "thiserror 2.0.20",
  "tokio",
  "toml 0.8.23",
@@ -9294,6 +9295,7 @@ dependencies = [
  "spin-key-value-spin",
  "spin-locked-app",
  "spin-resource-table",
+ "spin-semaphore",
  "spin-telemetry",
  "spin-wasi-async",
  "spin-world",
@@ -9545,6 +9547,7 @@ dependencies = [
  "spin-factor-otel",
  "spin-factors",
  "spin-factors-test",
+ "spin-semaphore",
  "spin-telemetry",
  "spin-world",
  "tokio",
@@ -9577,6 +9580,7 @@ dependencies = [
  "serde",
  "spin-app",
  "spin-factors-derive",
+ "spin-semaphore",
  "thiserror 2.0.20",
  "toml 0.8.23",
  "wasmtime",
@@ -9602,6 +9606,7 @@ dependencies = [
  "spin-factor-wasi",
  "spin-factors",
  "spin-factors-test",
+ "spin-semaphore",
  "spin-telemetry",
  "tokio",
  "tracing",
@@ -9664,9 +9669,11 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-dynamodb",
+ "hyper-util",
  "serde",
  "spin-core",
  "spin-factor-key-value",
+ "spin-semaphore",
  "tokio",
 ]
 
@@ -9680,9 +9687,12 @@ dependencies = [
  "azure_data_cosmos",
  "azure_identity 0.21.0",
  "futures",
+ "hyper-util",
  "reqwest 0.12.28",
  "serde",
  "spin-factor-key-value",
+ "spin-factor-outbound-http",
+ "spin-semaphore",
  "tokio",
 ]
 
@@ -9695,6 +9705,7 @@ dependencies = [
  "serde",
  "spin-core",
  "spin-factor-key-value",
+ "spin-semaphore",
  "tokio",
  "url",
 ]
@@ -9708,6 +9719,7 @@ dependencies = [
  "serde",
  "spin-core",
  "spin-factor-key-value",
+ "spin-semaphore",
  "spin-wasi-async",
  "spin-world",
  "tokio",
@@ -9739,9 +9751,12 @@ version = "4.2.0-pre0"
 dependencies = [
  "anyhow",
  "futures",
+ "hyper-util",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "spin-factor-outbound-http",
+ "spin-semaphore",
  "spin-telemetry",
  "spin-world",
  "tracing",
@@ -9956,6 +9971,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin-semaphore"
+version = "4.2.0-pre0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "spin-connection-semaphore",
+]
+
+[[package]]
 name = "spin-serde"
 version = "4.2.0-pre0"
 dependencies = [
@@ -10160,8 +10184,10 @@ dependencies = [
  "azure_core 0.20.0",
  "azure_identity 0.20.0",
  "azure_security_keyvault",
+ "hyper-util",
  "serde",
  "spin-expressions",
+ "spin-factor-outbound-http",
  "spin-factors",
  "spin-world",
  "tracing",
@@ -10175,6 +10201,7 @@ dependencies = [
  "serde",
  "spin-expressions",
  "spin-factors",
+ "spin-semaphore",
  "spin-world",
  "tokio",
  "tracing",
@@ -10189,6 +10216,7 @@ dependencies = [
  "spin-common",
  "spin-expressions",
  "spin-factors",
+ "spin-semaphore",
  "tempfile",
  "toml 0.8.23",
 ]
@@ -10200,6 +10228,7 @@ dependencies = [
  "serde",
  "spin-expressions",
  "spin-factors",
+ "spin-semaphore",
  "tracing",
  "vaultrs",
 ]

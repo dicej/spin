@@ -1,6 +1,7 @@
 use wasmtime::component::{Linker, ResourceTable};
 
 use crate::{App, ConfiguredApp, Factor, factor::FactorInstanceState};
+use spin_semaphore::SemaphoreBuilder;
 
 /// A collection of `Factor`s that are initialized and configured together.
 ///
@@ -61,6 +62,7 @@ pub trait RuntimeFactors: Send + Sync + Sized + 'static {
         &self,
         configured_app: &ConfiguredApp<Self>,
         component_id: &str,
+        semaphore_builder: &SemaphoreBuilder,
     ) -> crate::Result<Self::InstanceBuilders>;
 
     /// Build the instance state for the factors.

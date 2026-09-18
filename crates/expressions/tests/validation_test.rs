@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use spin_expressions::{Key, Provider, ProviderResolver};
 use spin_locked_app::Variable;
+use spin_semaphore::Semaphore;
 
 #[derive(Default)]
 struct ResolverTester {
@@ -233,7 +234,7 @@ impl StaticProvider {
 
 #[async_trait]
 impl Provider for StaticProvider {
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
+    async fn get(&self, key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
         Ok(self.variables.get(key.as_str()).cloned().flatten())
     }
 
@@ -247,7 +248,7 @@ struct DynamicProvider;
 
 #[async_trait]
 impl Provider for DynamicProvider {
-    async fn get(&self, _key: &Key) -> anyhow::Result<Option<String>> {
+    async fn get(&self, _key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
         panic!("validation should never call get for a dynamic provider")
     }
 }

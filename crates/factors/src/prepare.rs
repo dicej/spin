@@ -1,6 +1,7 @@
 use std::any::Any;
 
 use spin_app::AppComponent;
+use spin_semaphore::SemaphoreBuilder;
 
 use crate::{Error, Factor, RuntimeFactors};
 

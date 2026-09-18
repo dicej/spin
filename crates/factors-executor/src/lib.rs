@@ -8,6 +8,7 @@ use spin_factors::{
     AsInstanceState, ConfiguredApp, Factor, HasInstanceBuilder, RuntimeFactors,
     RuntimeFactorsInstanceState,
 };
+use spin_semaphore::SemaphoreBuilder;
 
 /// A FactorsExecutor manages execution of a Spin app.
 ///

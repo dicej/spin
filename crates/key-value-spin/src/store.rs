@@ -4,6 +4,7 @@ use spin_core::async_trait;
 use spin_factor_key_value::{
     Cas, Error, Store, StoreManager, SwapError, log_cas_error, log_error, log_error_v3, v3,
 };
+use spin_semaphore::{ActivityGuard, Permit, Semaphore, Type};
 use std::rc::Rc;
 use std::{
     path::PathBuf,
@@ -14,7 +15,7 @@ use tokio::task;
 
 struct PermittedConnection {
     inner: Connection,
-    _permit: Option<Permit>,
+    permit: Option<Permit>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,16 +78,11 @@ impl KeyValueSqlite {
 
 #[async_trait]
 impl StoreManager for KeyValueSqlite {
-    async fn get(
-        &self,
-        name: &str,
-        semaphore: ResourceSemaphore,
-        bound: ResourceBound,
-    ) -> Result<Arc<dyn Store>, Error> {
+    async fn get(&self, name: &str, semaphore: Semaphore) -> Result<Arc<dyn Store>, Error> {
         let connection = if let Some(connection) = self.connection.get() {
             connection
         } else {
-            let permit = semaphore.acquire().await?;
+            let permit = semaphore.acquire(Type::FileDescriptor).await?;
             task::block_in_place(|| {
                 // Only create the connection if we failed to get it.
                 // We might do duplicate work here if there's a race, but that's fine.
@@ -95,12 +91,15 @@ impl StoreManager for KeyValueSqlite {
             })?
         };
 
-        semaphore.attribute(&bound);
+        let guard = ActivityGuard::default();
+        if let Some(permit) = &connection.permit {
+            guard.add(permit.clone());
+        }
 
         Ok(Arc::new(SqliteStore {
             name: name.to_owned(),
             connection: connection.clone(),
-            bound,
+            guard,
         }))
     }
 
@@ -398,7 +397,7 @@ impl Store for SqliteStore {
             connection: self.connection.clone(),
             value: Mutex::new(None),
             bucket_rep,
-            _bound: self.bound.clone(),
+            _guard: self.guard.clone(),
         }))
     }
 }
@@ -409,7 +408,7 @@ struct CompareAndSwap {
     value: Mutex<Option<Vec<u8>>>,
     connection: Arc<Mutex<Connection>>,
     bucket_rep: u32,
-    _bound: ResourceBound,
+    _guard: ActivityGuard,
 }
 
 #[async_trait]

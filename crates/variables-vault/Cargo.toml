@@ -12,6 +12,7 @@ rust-version.workspace = true
 serde = { workspace = true }
 spin-expressions = { path = "../expressions" }
 spin-factors = { path = "../factors" }
+spin-semaphore = { path = "../semaphore" }
 tracing = { workspace = true }
 vaultrs = "0.7"
 

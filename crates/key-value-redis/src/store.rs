@@ -4,9 +4,15 @@ use spin_core::async_trait;
 use spin_factor_key_value::{
     Cas, Error, Store, StoreManager, SwapError, log_error, log_error_v3, v3,
 };
+use spin_semaphore::{ActivityGuard, Permit, Semaphore, Type};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 use url::Url;
+
+struct PermittedConnectionManager {
+    inner: ConnectionManager,
+    permit: Permit,
+}
 
 pub struct KeyValueRedis {
     database_url: Url,
@@ -26,16 +32,11 @@ impl KeyValueRedis {
 
 #[async_trait]
 impl StoreManager for KeyValueRedis {
-    async fn get(
-        &self,
-        _name: &str,
-        semaphore: ResourceSemaphore,
-        bound: ResourceBound,
-    ) -> Result<Arc<dyn Store>, Error> {
+    async fn get(&self, _name: &str, semaphore: &Semaphore) -> Result<Arc<dyn Store>, Error> {
         let connection = self
             .connection
             .get_or_try_init(|| async {
-                let permit = semaphore.acquire().await?;
+                let permit = semaphore.acquire(Type::Socket).await?;
                 Ok(PermittedConnectionManager {
                     inner: Client::open(self.database_url.clone())?
                         .get_connection_manager()
@@ -46,13 +47,14 @@ impl StoreManager for KeyValueRedis {
             .await
             .map_err(log_error)?;
 
-        semaphore.attribute(&connection.permit);
+        let guard = ActivityGuard::new();
+        guard.add(connection.permit.clone());
 
         Ok(Arc::new(RedisStore {
             connection: connection.clone(),
             database_url: self.database_url.clone(),
             semaphore,
-            bound,
+            guard,
         }))
     }
 
@@ -69,15 +71,15 @@ impl StoreManager for KeyValueRedis {
 struct RedisStore {
     connection: ConnectionManager,
     database_url: Url,
-    semaphore: ResourceSemaphore,
-    bound: RedisBound,
+    semaphore: Semaphore,
+    guard: ActivityGuard,
 }
 
 struct CompareAndSwap {
     key: String,
     connection: ConnectionManager,
     bucket_rep: u32,
-    _bound: RedisBound,
+    _guard: ActivityGuard,
 }
 
 #[async_trait]
@@ -257,7 +259,7 @@ impl Store for RedisStore {
         bucket_rep: u32,
         key: &str,
     ) -> Result<Arc<dyn Cas>, Error> {
-        let permit = self.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire(Type::Socket).await?;
         let cx = PermittedConnectionManager {
             inner: Client::open(self.database_url.clone())
                 .map_err(log_error)?
@@ -267,11 +269,14 @@ impl Store for RedisStore {
             permit,
         };
 
+        let guard = ActivityGuard::new();
+        guard.add(cx.permit.clone());
+
         Ok(Arc::new(CompareAndSwap {
             key: key.to_string(),
             connection: cx,
             bucket_rep,
-            _bound: self.bound.clone(),
+            _guard: guard,
         }))
     }
 }

@@ -12,6 +12,7 @@ spin-core = { path = "../core" }
 spin-factor-key-value = { path = "../factor-key-value" }
 spin-wasi-async = { path = "../wasi-async" }
 spin-world = { path = "../world" }
+spin-semaphore = { path = "../semaphore" }
 tokio = { workspace = true, features = ["rt", "sync"] }
 
 [dev-dependencies]

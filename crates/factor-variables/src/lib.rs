@@ -10,6 +10,7 @@ use spin_factors::{
     ConfigureAppContext, Factor, FactorData, InitContext, PrepareContext, RuntimeFactors,
     SelfInstanceBuilder, anyhow,
 };
+use spin_semaphore::Semaphore;
 use spin_world::spin::variables::variables as v3;
 
 /// A factor for providing variables to components.
@@ -74,6 +75,7 @@ impl Factor for VariablesFactor {
             component_id,
             expression_resolver,
             otel,
+            semaphore: ctx.semaphore_builder().build(),
         })
     }
 }
@@ -100,6 +102,7 @@ pub struct InstanceState {
     component_id: String,
     expression_resolver: Arc<ExpressionResolver>,
     otel: OtelFactorState,
+    semaphore: Semaphore,
 }
 
 impl InstanceState {

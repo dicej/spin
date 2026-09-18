@@ -7,9 +7,12 @@ edition = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 futures = { workspace = true }
+hyper-util = { workspace = true }
 reqwest = { workspace = true, features = ["gzip", "json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+spin-factor-outbound-http = { path = "../factor-outbound-http" }
+spin-semaphore = { path = "../semaphore" }
 spin-telemetry = { path = "../telemetry" }
 spin-world = { path = "../world" }
 tracing = { workspace = true }

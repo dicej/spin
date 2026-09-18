@@ -10,6 +10,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 spin-locked-app = { path = "../locked-app" }
+spin-semaphore = { path = "../semaphore" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

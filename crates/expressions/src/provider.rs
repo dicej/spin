@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use spin_semaphore::Semaphore;
 
 use crate::Key;
 
@@ -8,7 +9,7 @@ use crate::Key;
 #[async_trait]
 pub trait Provider: Debug + Send + Sync {
     /// Returns the value at the given config path, if it exists.
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>>;
+    async fn get(&self, key: &Key, semaphore: &Semaphore) -> anyhow::Result<Option<String>>;
 
     /// Returns true if the given key _might_ be resolvable by this Provider.
     ///

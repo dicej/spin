@@ -16,6 +16,7 @@ use spin_factors::{
 };
 use spin_locked_app::APP_NAME_KEY;
 use spin_locked_app::MetadataKey;
+use spin_semaphore::Semaphore;
 
 /// Metadata key for key-value stores.
 pub const KEY_VALUE_STORES_KEY: MetadataKey<Vec<String>> = MetadataKey::new("key_value_stores");
@@ -130,7 +131,10 @@ impl Factor for KeyValueFactor {
         Ok(InstanceBuilder {
             store_manager: app_state.store_manager.clone(),
             allowed_stores,
-            semaphore: app_state.semaphore.clone(),
+            semaphore: ctx
+                .semaphore_builder
+                .with_connection_semaphore(app_state.semaphore.clone())
+                .build(),
             otel,
         })
     }
@@ -151,7 +155,7 @@ pub struct AppState {
     /// component is allowed to use.
     component_allowed_stores: HashMap<String, HashSet<String>>,
     /// App-scoped semaphore used to limit in-flight key-value operations.
-    semaphore: ConnectionSemaphore,
+    semaphore: Semaphore,
 }
 
 impl AppState {
@@ -214,7 +218,7 @@ pub struct InstanceBuilder {
     /// The allowed stores for this component instance.
     allowed_stores: HashSet<String>,
     /// App-scoped semaphore shared by all component instances for this app.
-    semaphore: ConnectionSemaphore,
+    semaphore: Semaphore,
     otel: OtelFactorState,
 }
 
@@ -228,7 +232,7 @@ impl FactorInstanceBuilder for InstanceBuilder {
             semaphore,
             otel,
         } = self;
-        Ok(KeyValueDispatch::new_with_capacity_and_semaphore(
+        Ok(KeyValueDispatch::new(
             allowed_stores,
             store_manager,
             u32::MAX,

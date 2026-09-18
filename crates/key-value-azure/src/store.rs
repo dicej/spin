@@ -7,10 +7,12 @@ use azure_data_cosmos::{
     },
 };
 use futures::StreamExt;
+use hyper_util::client::legacy::Client;
 use serde::{Deserialize, Serialize};
 use spin_factor_key_value::{
     Cas, Error, Store, StoreManager, SwapError, log_cas_error, log_error, log_error_v3, v3,
 };
+use spin_factor_outbound_http::HttpsConnector;
 use std::sync::{Arc, Mutex};
 
 pub struct KeyValueAzureCosmos {

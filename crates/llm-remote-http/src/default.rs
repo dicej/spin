@@ -1,10 +1,12 @@
 use anyhow::Result;
+use hyper_util::client::legacy::Client;
 use reqwest::{
     Client, Url,
     header::{HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use spin_factor_outbound_http::{HttpClient, HttpsExecutor};
 use spin_world::{
     async_trait,
     v2::llm::{self as wasi_llm},

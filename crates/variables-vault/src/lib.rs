@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use spin_expressions::async_trait::async_trait;
 use spin_factors::anyhow::{self, Context as _};
+use spin_semaphore::{Semaphore, Type};
 use tracing::{Level, instrument};
 use vaultrs::{
     client::{VaultClient, VaultClientSettingsBuilder},
@@ -27,12 +28,9 @@ pub struct VaultVariablesProvider {
 
 #[async_trait]
 impl Provider for VaultVariablesProvider {
-    #[instrument(name = "spin_variables.get_from_vault", level = Level::DEBUG, skip(self), err(level = Level::INFO), fields(otel.kind = "client"))]
-    async fn get(&self, key: &Key, semaphore: InstanceSemaphore) -> anyhow::Result<Option<String>> {
-        let _permit = self
-            .semaphore
-            .acquire(ResourceType::VaultConnection)
-            .await?;
+    #[instrument(name = "spin_variables.get_from_vault", level = Level::DEBUG, skip(self, semaphore), err(level = Level::INFO), fields(otel.kind = "client"))]
+    async fn get(&self, key: &Key, semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
+        let _permit = semaphore.acquire(Type::Socket).await?;
         let client = VaultClient::new(
             VaultClientSettingsBuilder::default()
                 .address(&self.url)

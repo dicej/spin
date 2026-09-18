@@ -4,6 +4,7 @@ mod template;
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, vec};
 
 use spin_locked_app::Variable;
+use spin_semaphore::Semaphore;
 
 pub use async_trait;
 
@@ -47,13 +48,22 @@ impl ProviderResolver {
     }
 
     /// Resolves a variable value for the given path.
-    pub async fn resolve(&self, component_id: &str, key: Key<'_>) -> Result<String> {
+    pub async fn resolve(
+        &self,
+        component_id: &str,
+        key: Key<'_>,
+        semaphore: &Semaphore,
+    ) -> Result<String> {
         let template = self.internal.get_template(component_id, key)?;
-        self.resolve_template(template).await
+        self.resolve_template(template, semaphore).await
     }
 
     /// Resolves all variables for the given component.
-    pub async fn resolve_all(&self, component_id: &str) -> Result<Vec<(String, String)>> {
+    pub async fn resolve_all(
+        &self,
+        component_id: &str,
+        semaphore: &Semaphore,
+    ) -> Result<Vec<(String, String)>> {
         use futures::FutureExt;
 
         let Some(keys2templates) = self.internal.component_configs.get(component_id) else {
@@ -61,7 +71,7 @@ impl ProviderResolver {
         };
 
         let resolve_futs = keys2templates.iter().map(|(key, template)| {
-            self.resolve_template(template)
+            self.resolve_template(template, semaphore)
                 .map(|r| r.map(|value| (key.to_string(), value)))
         });
 
@@ -69,22 +79,26 @@ impl ProviderResolver {
     }
 
     /// Resolves the given template.
-    pub async fn resolve_template(&self, template: &Template) -> Result<String> {
+    pub async fn resolve_template(
+        &self,
+        template: &Template,
+        semaphore: &Semaphore,
+    ) -> Result<String> {
         let mut resolved_parts: Vec<Cow<str>> = Vec::with_capacity(template.parts().len());
         for part in template.parts() {
             resolved_parts.push(match part {
                 Part::Lit(lit) => lit.as_ref().into(),
-                Part::Expr(var) => self.resolve_variable(var).await?.into(),
+                Part::Expr(var) => self.resolve_variable(var, semaphore).await?.into(),
             });
         }
         Ok(resolved_parts.concat())
     }
 
     /// Fully resolve all variables into a [`PreparedResolver`].
-    pub async fn prepare(&self) -> Result<PreparedResolver> {
+    pub async fn prepare(&self, semaphore: &Semaphore) -> Result<PreparedResolver> {
         let mut variables = HashMap::new();
         for name in self.internal.variables.keys() {
-            let value = self.resolve_variable(name).await?;
+            let value = self.resolve_variable(name, semaphore).await?;
             variables.insert(name.clone(), value);
         }
         Ok(PreparedResolver { variables })
@@ -113,9 +127,13 @@ impl ProviderResolver {
         }
     }
 
-    async fn resolve_variable(&self, key: &str) -> Result<String> {
+    async fn resolve_variable(&self, key: &str, semaphore: &Semaphore) -> Result<String> {
         for provider in &self.providers {
-            if let Some(value) = provider.get(&Key(key)).await.map_err(Error::Provider)? {
+            if let Some(value) = provider
+                .get(&Key(key), semaphore)
+                .await
+                .map_err(Error::Provider)?
+            {
                 return Ok(value);
             }
         }
@@ -362,7 +380,7 @@ mod tests {
 
     #[async_trait]
     impl Provider for TestProvider {
-        async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
+        async fn get(&self, key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
             match key.as_ref() {
                 "required" => Ok(Some("provider-value".to_string())),
                 "broken" => anyhow::bail!("broken"),
