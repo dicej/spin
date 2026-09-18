@@ -144,8 +144,10 @@ fn expand_factors(input: &DeriveInput) -> syn::Result<TokenStream> {
             }
 
             fn prepare(
-                &self, configured_app: &#ConfiguredApp<Self>,
+                &self,
+                configured_app: &#ConfiguredApp<Self>,
                 component_id: &str,
+                semaphore_builder: &SemaphoreBuilder,
             ) -> #Result<Self::InstanceBuilders> {
                 let app_component = configured_app.app().get_component(component_id).ok_or_else(|| {
                     #factors_path::Error::UnknownComponent(component_id.to_string())
@@ -161,6 +163,7 @@ fn expand_factors(input: &DeriveInput) -> syn::Result<TokenStream> {
                                 configured_app.app_state::<#factor_types>().unwrap(),
                                 &app_component,
                                 &mut builders,
+                                semaphore_builder,
                             ),
                         ).map_err(#Error::factor_prepare_error::<#factor_types>)?
                     );

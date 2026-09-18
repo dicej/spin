@@ -43,6 +43,7 @@ pub struct PrepareContext<'a, T: RuntimeFactors, F: Factor> {
     pub(crate) app_state: &'a F::AppState,
     pub(crate) app_component: &'a AppComponent<'a>,
     pub(crate) instance_builders: &'a mut T::InstanceBuilders,
+    pub(crate) semaphore_builder: &'a SemaphoreBuilder,
 }
 
 impl<'a, T: RuntimeFactors, F: Factor> PrepareContext<'a, T, F> {
@@ -51,11 +52,13 @@ impl<'a, T: RuntimeFactors, F: Factor> PrepareContext<'a, T, F> {
         app_state: &'a F::AppState,
         app_component: &'a AppComponent,
         instance_builders: &'a mut T::InstanceBuilders,
+        semaphore_builder: &'a SemaphoreBuilder,
     ) -> Self {
         Self {
             app_state,
             app_component,
             instance_builders,
+            semaphore_builder,
         }
     }
 
@@ -67,6 +70,10 @@ impl<'a, T: RuntimeFactors, F: Factor> PrepareContext<'a, T, F> {
     /// Get the app component.
     pub fn app_component(&self) -> &'a AppComponent<'_> {
         self.app_component
+    }
+
+    pub fn semaphore_builder(&self) -> &'a SemaphoreBuilder {
+        self.semaphore_builder
     }
 
     /// Returns the prepared [`FactorInstanceBuilder`] for the given [`Factor`].

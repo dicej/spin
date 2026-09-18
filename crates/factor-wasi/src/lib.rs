@@ -483,7 +483,7 @@ impl MountFilesContext<'_> {
 
 pub struct InstanceBuilder {
     ctx: WasiCtxBuilder,
-    socket_permit_state: Option<Arc<SocketPermitState>>,
+    semaphore: Semaphore,
 }
 
 impl InstanceBuilder {
@@ -565,9 +565,13 @@ impl FactorInstanceBuilder for InstanceBuilder {
 }
 
 impl InstanceBuilder {
-    /// Sets the socket permit state for per-connection quota tracking.
-    pub fn set_socket_permit_state(&mut self, state: Arc<SocketPermitState>) {
-        self.socket_permit_state = Some(state);
+    /// Sets the connection semaphore for per-connection quota tracking.
+    pub fn set_connection_semaphore(&mut self, semaphore: ConnectionSemaphore) {
+        self.semaphore = self
+            .semaphore
+            .as_builder()
+            .with_connection_semaphore(state.semaphore.clone())
+            .build();
     }
 
     pub fn outbound_socket_addr_check<F, Fut>(&mut self, check: F)
@@ -594,7 +598,8 @@ impl InstanceBuilder {
 
 pub struct InstanceState {
     ctx: WasiCtx,
-    socket_permit_state: Option<Arc<SocketPermitState>>,
+    semaphore: Semaphore,
+    permits: HashMap<u32, Permit>,
 }
 
 impl InstanceState {

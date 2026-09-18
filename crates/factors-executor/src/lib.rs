@@ -210,7 +210,11 @@ impl<T: RuntimeFactors, U: Send + 'static> FactorsExecutorApp<T, U> {
     }
 
     /// Returns an instance builder for the given component ID.
-    pub fn prepare(&self, component_id: &str) -> anyhow::Result<FactorsInstanceBuilder<'_, T, U>> {
+    pub fn prepare(
+        &self,
+        component_id: &str,
+        semaphore_builder: &SemaphoreBuilder,
+    ) -> anyhow::Result<FactorsInstanceBuilder<'_, T, U>> {
         let app_component = self
             .configured_app
             .app()
@@ -219,10 +223,10 @@ impl<T: RuntimeFactors, U: Send + 'static> FactorsExecutorApp<T, U> {
 
         let instance_pre = self.component_instance_pres.get(component_id).unwrap();
 
-        let factor_builders = self
-            .executor
-            .factors
-            .prepare(&self.configured_app, component_id)?;
+        let factor_builders =
+            self.executor
+                .factors
+                .prepare(&self.configured_app, component_id, semaphore_builder)?;
 
         let store_builder = self.executor.core_engine.store_builder();
 

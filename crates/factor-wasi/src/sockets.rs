@@ -24,24 +24,6 @@ use wasmtime_wasi::{
     sockets::{WasiSockets, WasiSocketsCtxView},
 };
 
-/// Shared state for tracking per-socket semaphore permits. Permits are
-/// acquired when a socket is allocated and released when the socket resource
-/// is dropped.
-pub struct SocketPermitState {
-    semaphore: ConnectionSemaphore,
-    /// Active permits keyed by socket resource rep, released when the resource is dropped.
-    active: Mutex<HashMap<u32, ConnectionPermit>>,
-}
-
-impl SocketPermitState {
-    pub fn new(semaphore: ConnectionSemaphore) -> Arc<Self> {
-        Arc::new(Self {
-            semaphore,
-            active: Mutex::new(HashMap::new()),
-        })
-    }
-}
-
 /// A view over WASI socket state that carries an optional per-instance socket
 /// permit store, enabling per-connection quota tracking.
 pub struct SpinSocketsView<'a, T> {
@@ -77,46 +59,6 @@ impl<'a, T> SpinSocketsView<'a, T> {
     /// Consumes this view and returns the inner [`WasiSocketsCtxView`].
     pub fn into_wasi(self) -> WasiSocketsCtxView<'a> {
         self.inner
-    }
-}
-
-impl<T> SpinSocketsView<'_, T> {
-    /// Attempts to acquire a connection permit from the semaphore.
-    ///
-    /// Returns `Ok(None)` when no quota is configured, `Ok(Some(permit))` on
-    /// success, or `Err(())` when the quota is exhausted.
-    ///
-    /// The returned permit is unregistered — call [`Self::register_permit`] once
-    /// the socket resource rep is known to tie its lifetime to the socket.
-    pub(crate) fn try_acquire(&self) -> Result<Option<ConnectionPermit>, ()> {
-        let Some(state) = &self.permit_state else {
-            return Ok(None);
-        };
-        state.semaphore.try_acquire().map(Some).ok_or(())
-    }
-
-    /// Registers `permit` under `socket_rep` so it is held until the socket is
-    /// dropped. No-op when `permit` is `None` (no quota configured).
-    pub(crate) fn register_permit(&self, socket_rep: u32, permit: Option<ConnectionPermit>) {
-        let (Some(state), Some(permit)) = (&self.permit_state, permit) else {
-            return;
-        };
-        state
-            .active
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(socket_rep, permit);
-    }
-
-    /// Releases the connection permit for `socket_rep`, if any.
-    pub(crate) fn release_permit(&self, socket_rep: u32) {
-        if let Some(state) = &self.permit_state {
-            state
-                .active
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&socket_rep);
-        }
     }
 }
 
@@ -325,8 +267,7 @@ impl<T> p2_tcp::HostTcpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, this: Resource<TcpSocket>) -> wasmtime::Result<()> {
-        self.release_permit(this.rep());
-        let _permit = self.descriptor_permit_state.active.remove(this.rep());
+        let _permit = self.permits.remove(this.rep());
         p2_tcp::HostTcpSocket::drop(&mut self.inner, this)
     }
 }
@@ -358,18 +299,9 @@ impl<T> p2_tcp_create::Host for SpinSocketsView<'_, T> {
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
     ) -> wasmtime_wasi::p2::SocketResult<Resource<TcpSocket>> {
-        // Unlike outbound HTTP, socket creation fails immediately when the
-        // quota is full. Waiting could deadlock a guest that keeps sockets open.
-        let Ok(permit) = self.try_acquire() else {
-            tracing::warn!("TCP socket creation refused: connection quota exhausted");
-            return Err(SocketErrorCode::NewSocketLimit.into());
-        };
-        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire(Type::Socket).await?;
         let socket = p2_tcp_create::Host::create_tcp_socket(&mut self.inner, address_family)?;
-        self.descriptor_permit_state
-            .active
-            .insert(socket.rep(), descriptor_permit);
-        self.register_permit(socket.rep(), permit);
+        self.permits.insert(socket.rep(), permit);
         Ok(socket)
     }
 }
@@ -478,8 +410,7 @@ impl<T> p2_udp::HostUdpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, this: Resource<p2_udp::UdpSocket>) -> wasmtime::Result<()> {
-        self.release_permit(this.rep());
-        let _permit = self.descriptor_permit_state.active.remove(this.rep());
+        let _permit = self.permits.remove(this.rep());
         p2_udp::HostUdpSocket::drop(&mut self.inner, this)
     }
 }
@@ -541,18 +472,9 @@ impl<T> p2_udp_create::Host for SpinSocketsView<'_, T> {
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
     ) -> wasmtime_wasi::p2::SocketResult<Resource<UdpSocket>> {
-        // Fail immediately rather than wait. Waiting could deadlock a guest
-        // that keeps sockets open.
-        let Ok(permit) = self.try_acquire() else {
-            tracing::warn!("UDP socket creation refused: connection quota exhausted");
-            return Err(SocketErrorCode::NewSocketLimit.into());
-        };
-        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire(Type::Socket).await?;
         let sock = p2_udp_create::Host::create_udp_socket(&mut self.inner, address_family).await?;
-        self.descriptor_permit_state
-            .active
-            .insert(socket.rep(), descriptor_permit);
-        self.register_permit(sock.rep(), permit);
+        self.permits.insert(socket.rep(), permit);
         Ok(sock)
     }
 }
@@ -591,16 +513,9 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
         &mut self,
         address_family: p3_IpAddressFamily,
     ) -> P3SocketResult<Resource<p3_types::TcpSocket>> {
-        let Ok(permit) = self.try_acquire() else {
-            tracing::warn!("TCP socket creation refused: connection quota exhausted");
-            return Err(p3_ErrorCode::Other(Some("connection quota exhausted".into())).into());
-        };
-        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire(Type::Socket).await?;
         let socket = p3_HostTcpSocket::create(&mut self.inner, address_family)?;
-        self.descriptor_permit_state
-            .active
-            .insert(socket.rep(), descriptor_permit);
-        self.register_permit(socket.rep(), permit);
+        self.permits.insert(socket.rep(), descriptor_permit);
         Ok(socket)
     }
 
@@ -743,8 +658,7 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, sock: Resource<p3_types::TcpSocket>) -> wasmtime::Result<()> {
-        self.release_permit(sock.rep());
-        let _permit = self.descriptor_permit_state.active.remove(sock.rep());
+        let _permit = self.permits.remove(sock.rep());
         p3_HostTcpSocket::drop(&mut self.inner, sock)
     }
 }
@@ -770,16 +684,9 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
         &mut self,
         address_family: p3_IpAddressFamily,
     ) -> P3SocketResult<Resource<p3_types::UdpSocket>> {
-        // Fail immediately rather than wait. Waiting could deadlock a guest
-        // that keeps sockets open.
-        let Ok(permit) = self.try_acquire() else {
-            tracing::warn!("UDP socket creation refused: connection quota exhausted");
-            return Err(p3_ErrorCode::Other(Some("connection quota exhausted".into())).into());
-        };
-        let descriptor_permit = self.descriptor_permit_state.semaphore.acquire().await?;
+        let permit = self.semaphore.acquire(Type::Socket).await?;
         let sock = p3_HostUdpSocket::create(&mut self.inner, address_family).await?;
-        self.register_permit(socket.rep(), permit);
-        self.register_permit(sock.rep(), permit);
+        self.permits.insert(sock.rep(), permit);
         Ok(sock)
     }
 
@@ -854,8 +761,7 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
     }
 
     fn drop(&mut self, sock: Resource<p3_types::UdpSocket>) -> wasmtime::Result<()> {
-        self.release_permit(sock.rep());
-        let _permit = self.descriptor_permit_state.active.remove(sock.rep());
+        let _permit = self.permits.remove(sock.rep());
         p3_HostUdpSocket::drop(&mut self.inner, sock)
     }
 }
