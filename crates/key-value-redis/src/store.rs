@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 use url::Url;
 
+#[derive(Clone)]
 struct PermittedConnectionManager {
     inner: ConnectionManager,
     permit: Permit,
@@ -37,7 +38,7 @@ impl StoreManager for KeyValueRedis {
             .connection
             .get_or_try_init(|| async {
                 let permit = semaphore.acquire(Type::Socket).await?;
-                Ok(PermittedConnectionManager {
+                Ok::<_, anyhow::Error>(PermittedConnectionManager {
                     inner: Client::open(self.database_url.clone())?
                         .get_connection_manager()
                         .await?,
@@ -47,13 +48,13 @@ impl StoreManager for KeyValueRedis {
             .await
             .map_err(log_error)?;
 
-        let guard = ActivityGuard::new();
+        let guard = ActivityGuard::default();
         guard.add(connection.permit.clone());
 
         Ok(Arc::new(RedisStore {
             connection: connection.clone(),
             database_url: self.database_url.clone(),
-            semaphore,
+            semaphore: semaphore.clone(),
             guard,
         }))
     }
@@ -69,7 +70,7 @@ impl StoreManager for KeyValueRedis {
 }
 
 struct RedisStore {
-    connection: ConnectionManager,
+    connection: PermittedConnectionManager,
     database_url: Url,
     semaphore: Semaphore,
     guard: ActivityGuard,
@@ -77,7 +78,7 @@ struct RedisStore {
 
 struct CompareAndSwap {
     key: String,
-    connection: ConnectionManager,
+    connection: PermittedConnectionManager,
     bucket_rep: u32,
     _guard: ActivityGuard,
 }
@@ -85,7 +86,7 @@ struct CompareAndSwap {
 #[async_trait]
 impl Store for RedisStore {
     async fn after_open(&self) -> Result<(), Error> {
-        if let Err(_error) = self.connection.clone().ping::<()>().await {
+        if let Err(_error) = self.connection.inner.clone().ping::<()>().await {
             // If an IO error happens, ConnectionManager will start reconnection in the background
             // so we do not take any action and just pray re-connection will be successful.
         }
@@ -95,6 +96,7 @@ impl Store for RedisStore {
     async fn get(&self, key: &str, max_result_bytes: usize) -> Result<Option<Vec<u8>>, Error> {
         let value = self
             .connection
+            .inner
             .clone()
             .get::<_, Option<Vec<u8>>>(key)
             .await
@@ -116,6 +118,7 @@ impl Store for RedisStore {
 
     async fn set(&self, key: &str, value: &[u8]) -> Result<(), Error> {
         self.connection
+            .inner
             .clone()
             .set(key, value)
             .await
@@ -123,11 +126,21 @@ impl Store for RedisStore {
     }
 
     async fn delete(&self, key: &str) -> Result<(), Error> {
-        self.connection.clone().del(key).await.map_err(log_error)
+        self.connection
+            .inner
+            .clone()
+            .del(key)
+            .await
+            .map_err(log_error)
     }
 
     async fn exists(&self, key: &str) -> Result<bool, Error> {
-        self.connection.clone().exists(key).await.map_err(log_error)
+        self.connection
+            .inner
+            .clone()
+            .exists(key)
+            .await
+            .map_err(log_error)
     }
 
     async fn get_keys(&self, max_result_bytes: usize) -> Result<Vec<String>, Error> {
@@ -137,6 +150,7 @@ impl Store for RedisStore {
 
         let keys = self
             .connection
+            .inner
             .clone()
             .keys::<_, Vec<String>>("*")
             .await
@@ -173,7 +187,7 @@ impl Store for RedisStore {
         let mut conn = self.connection.clone();
 
         let the_work = async move {
-            let mut scan = conn.scan::<String>().await.map_err(log_error_v3)?;
+            let mut scan = conn.inner.scan::<String>().await.map_err(log_error_v3)?;
             loop {
                 match scan.next_item().await {
                     None => break,
@@ -204,6 +218,7 @@ impl Store for RedisStore {
     ) -> Result<Vec<(String, Option<Vec<u8>>)>, Error> {
         let values = self
             .connection
+            .inner
             .clone()
             .keys::<_, Vec<(String, Option<Vec<u8>>)>>(keys)
             .await
@@ -233,6 +248,7 @@ impl Store for RedisStore {
 
     async fn set_many(&self, key_values: Vec<(String, Vec<u8>)>) -> Result<(), Error> {
         self.connection
+            .inner
             .clone()
             .mset(&key_values)
             .await
@@ -240,11 +256,17 @@ impl Store for RedisStore {
     }
 
     async fn delete_many(&self, keys: Vec<String>) -> Result<(), Error> {
-        self.connection.clone().del(keys).await.map_err(log_error)
+        self.connection
+            .inner
+            .clone()
+            .del(keys)
+            .await
+            .map_err(log_error)
     }
 
     async fn increment(&self, key: String, delta: i64) -> Result<i64, Error> {
         self.connection
+            .inner
             .clone()
             .incr(key, delta)
             .await
@@ -259,7 +281,11 @@ impl Store for RedisStore {
         bucket_rep: u32,
         key: &str,
     ) -> Result<Arc<dyn Cas>, Error> {
-        let permit = self.semaphore.acquire(Type::Socket).await?;
+        let permit = self
+            .semaphore
+            .acquire(Type::Socket)
+            .await
+            .map_err(|e| Error::Other(e.to_string()))?;
         let cx = PermittedConnectionManager {
             inner: Client::open(self.database_url.clone())
                 .map_err(log_error)?
@@ -269,7 +295,7 @@ impl Store for RedisStore {
             permit,
         };
 
-        let guard = ActivityGuard::new();
+        let guard = ActivityGuard::default();
         guard.add(cx.permit.clone());
 
         Ok(Arc::new(CompareAndSwap {
@@ -288,11 +314,12 @@ impl Cas for CompareAndSwap {
     async fn current(&self, max_result_bytes: usize) -> Result<Option<Vec<u8>>, Error> {
         redis::cmd("WATCH")
             .arg(&self.key)
-            .exec_async(&mut self.connection.clone())
+            .exec_async(&mut self.connection.inner.clone())
             .await
             .map_err(log_error)?;
         let value = self
             .connection
+            .inner
             .clone()
             .get::<_, Option<Vec<u8>>>(&self.key)
             .await
@@ -320,12 +347,12 @@ impl Cas for CompareAndSwap {
         let res: Result<(), RedisError> = transaction
             .atomic()
             .set(&self.key, value)
-            .query_async(&mut self.connection.clone())
+            .query_async(&mut self.connection.inner.clone())
             .await;
 
         redis::cmd("UNWATCH")
             .arg(&self.key)
-            .exec_async(&mut self.connection.clone())
+            .exec_async(&mut self.connection.inner.clone())
             .await
             .map_err(|err| SwapError::CasFailed(format!("{err:?}")))?;
 

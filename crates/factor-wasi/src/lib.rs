@@ -15,10 +15,12 @@ use std::{
 };
 
 use io::{PipeReadStream, PipedWriteStream};
+use spin_connection_semaphore::ConnectionSemaphore;
 use spin_factors::{
     AppComponent, Factor, FactorInstanceBuilder, InitContext, PrepareContext, RuntimeFactors,
     RuntimeFactorsInstanceState, anyhow,
 };
+use spin_semaphore::Semaphore;
 use wasmtime::component::HasData;
 use wasmtime_wasi::cli::{StdinStream, StdoutStream, WasiCli, WasiCliCtxView};
 use wasmtime_wasi::clocks::{WasiClocks, WasiClocksCtxView};
@@ -28,7 +30,7 @@ use wasmtime_wasi::sockets::{WasiSockets, WasiSocketsCtxView};
 use wasmtime_wasi::{FsPerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView};
 
 pub use filesystem::{SpinFilesystem, SpinFilesystemView};
-pub use sockets::{SocketPermitState, SpinSockets, SpinSocketsView};
+pub use sockets::{SpinSockets, SpinSocketsView};
 pub use wasi_2023_10_18::convert_result;
 pub use wasi_2026_03_15::{FutureReaderExt, StreamReaderExt, reborrow};
 pub use wasmtime_wasi::sockets::SocketAddrUse;
@@ -570,7 +572,7 @@ impl InstanceBuilder {
         self.semaphore = self
             .semaphore
             .as_builder()
-            .with_connection_semaphore(state.semaphore.clone())
+            .with_connection_semaphore(semaphore)
             .build();
     }
 
@@ -599,7 +601,6 @@ impl InstanceBuilder {
 pub struct InstanceState {
     ctx: WasiCtx,
     semaphore: Semaphore,
-    permits: HashMap<u32, Permit>,
 }
 
 impl InstanceState {

@@ -20,10 +20,13 @@ use aws_sdk_dynamodb::{
         WriteRequest,
     },
 };
+use hyper_util::client::legacy::Client as HyperClient;
 use spin_core::async_trait;
 use spin_factor_key_value::{
     Cas, Error, Store, StoreManager, SwapError, log_error, log_error_v3, v3,
 };
+use spin_factor_outbound_http::HttpsConnector;
+use spin_semaphore::Semaphore;
 
 pub struct KeyValueAwsDynamo {
     /// AWS region
@@ -110,7 +113,7 @@ impl KeyValueAwsDynamo {
             Client::new(
                 &sdk_config
                     .into_builder()
-                    .http_client(HyperClientBuilder::new().build(HttpsConnector))
+                    .http_client(HyperClient::builder(TokioExecutor::new()).build(HttpsConnector))
                     .build(),
             )
         });
@@ -151,7 +154,7 @@ struct AwsDynamoStore {
     client: Client,
     table: Arc<String>,
     consistent_read: bool,
-    semaphore: ResourceSemaphore,
+    semaphore: Semaphore,
 }
 
 #[derive(Debug, Clone)]

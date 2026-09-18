@@ -5,6 +5,7 @@ use spin_factors::{
     wasmtime::{Engine, component::Linker},
 };
 use spin_loader::FilesMountStrategy;
+use spin_semaphore::Semaphore;
 
 pub use toml::toml;
 
@@ -86,7 +87,9 @@ impl<T: RuntimeFactors> TestEnvironment<T> {
             configured_app.app().components().last().context(
                 "expected configured app to have at least one component, but it did not",
             )?;
-        let builders = self.factors.prepare(&configured_app, component.id())?;
+        let builders =
+            self.factors
+                .prepare(&configured_app, component.id(), &Semaphore::unlimited())?;
 
         Ok(self.factors.build_instance_state(builders)?)
     }

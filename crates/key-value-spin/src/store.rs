@@ -2,7 +2,8 @@ use anyhow::Result;
 use rusqlite::{Connection, named_params};
 use spin_core::async_trait;
 use spin_factor_key_value::{
-    Cas, Error, Store, StoreManager, SwapError, log_cas_error, log_error, log_error_v3, v3,
+    Cas, DEFAULT_STORE_TABLE_CAPACITY, Error, Store, StoreManager, SwapError, log_cas_error,
+    log_error, log_error_v3, v3,
 };
 use spin_semaphore::{ActivityGuard, Permit, Semaphore, Type};
 use std::rc::Rc;
@@ -45,15 +46,14 @@ impl KeyValueSqlite {
     fn create_connection(&self, permit: Permit) -> Result<Arc<Mutex<PermittedConnection>>, Error> {
         let connection = match &self.location {
             DatabaseLocation::InMemory => PermittedConnection {
-                inner: Connection::open_in_memory(),
-                _permit: None,
+                inner: Connection::open_in_memory().map_err(log_error)?,
+                permit: None,
             },
             DatabaseLocation::Path(path) => PermittedConnection {
-                inner: Connection::open(path),
-                _permit: Some(permit),
+                inner: Connection::open(path).map_err(log_error)?,
+                permit: Some(permit),
             },
-        }
-        .map_err(log_error)?;
+        };
 
         connection
             .inner
@@ -70,7 +70,7 @@ impl KeyValueSqlite {
             .map_err(log_error)?;
 
         // the array module is needed for `rarray` usage in queries.
-        rusqlite::vtab::array::load_module(&connection).map_err(log_error)?;
+        rusqlite::vtab::array::load_module(&connection.inner).map_err(log_error)?;
 
         Ok(Arc::new(Mutex::new(connection)))
     }
@@ -78,11 +78,14 @@ impl KeyValueSqlite {
 
 #[async_trait]
 impl StoreManager for KeyValueSqlite {
-    async fn get(&self, name: &str, semaphore: Semaphore) -> Result<Arc<dyn Store>, Error> {
+    async fn get(&self, name: &str, semaphore: &Semaphore) -> Result<Arc<dyn Store>, Error> {
         let connection = if let Some(connection) = self.connection.get() {
             connection
         } else {
-            let permit = semaphore.acquire(Type::FileDescriptor).await?;
+            let permit = semaphore
+                .acquire(Type::FileDescriptor)
+                .await
+                .map_err(|e| Error::Other(e.to_string()))?;
             task::block_in_place(|| {
                 // Only create the connection if we failed to get it.
                 // We might do duplicate work here if there's a race, but that's fine.
@@ -92,7 +95,7 @@ impl StoreManager for KeyValueSqlite {
         };
 
         let guard = ActivityGuard::default();
-        if let Some(permit) = &connection.permit {
+        if let Some(permit) = &connection.lock().unwrap().permit {
             guard.add(permit.clone());
         }
 
@@ -118,6 +121,7 @@ impl StoreManager for KeyValueSqlite {
 struct SqliteStore {
     name: String,
     connection: Arc<Mutex<PermittedConnection>>,
+    guard: ActivityGuard,
 }
 
 #[async_trait]
@@ -406,7 +410,7 @@ struct CompareAndSwap {
     name: String,
     key: String,
     value: Mutex<Option<Vec<u8>>>,
-    connection: Arc<Mutex<Connection>>,
+    connection: Arc<Mutex<PermittedConnection>>,
     bucket_rep: u32,
     _guard: ActivityGuard,
 }
@@ -517,7 +521,9 @@ mod test {
                 "default".to_owned(),
                 Arc::new(KeyValueSqlite::new(DatabaseLocation::InMemory)) as _,
             )])),
-            Arc::from("test"),
+            DEFAULT_STORE_TABLE_CAPACITY,
+            Semaphore::unlimited().build(),
+            Default::default(),
         );
 
         assert!(matches!(

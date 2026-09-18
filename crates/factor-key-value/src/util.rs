@@ -1,5 +1,6 @@
 use crate::{Error, Store, StoreManager};
 use spin_core::async_trait;
+use spin_semaphore::Semaphore;
 use std::{collections::HashMap, sync::Arc};
 
 /// A [`StoreManager`] which delegates to other `StoreManager`s based on the store label.
@@ -16,9 +17,9 @@ impl DelegatingStoreManager {
 
 #[async_trait]
 impl StoreManager for DelegatingStoreManager {
-    async fn get(&self, name: &str) -> Result<Arc<dyn Store>, Error> {
+    async fn get(&self, name: &str, semaphore: &Semaphore) -> Result<Arc<dyn Store>, Error> {
         match self.delegates.get(name) {
-            Some(store) => store.get(name).await,
+            Some(store) => store.get(name, semaphore).await,
             None => Err(Error::NoSuchStore),
         }
     }

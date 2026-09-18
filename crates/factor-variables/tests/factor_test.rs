@@ -2,6 +2,7 @@ use spin_expressions::{Key, Provider};
 use spin_factor_variables::{VariablesFactor, runtime_config::RuntimeConfig};
 use spin_factors::{RuntimeFactors, anyhow};
 use spin_factors_test::{TestEnvironment, toml};
+use spin_semaphore::Semaphore;
 use spin_world::v2::variables::Host;
 
 #[derive(RuntimeFactors)]
@@ -40,7 +41,7 @@ struct MockProvider;
 
 #[spin_world::async_trait]
 impl Provider for MockProvider {
-    async fn get(&self, key: &Key) -> anyhow::Result<Option<String>> {
+    async fn get(&self, key: &Key, _semaphore: &Semaphore) -> anyhow::Result<Option<String>> {
         match key.as_str() {
             "foo" => Ok(Some("bar".to_string())),
             _ => Ok(None),

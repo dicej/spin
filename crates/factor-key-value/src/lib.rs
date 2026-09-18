@@ -22,7 +22,8 @@ use spin_semaphore::Semaphore;
 pub const KEY_VALUE_STORES_KEY: MetadataKey<Vec<String>> = MetadataKey::new("key_value_stores");
 pub use host::to_v3_err;
 pub use host::{
-    Error, KeyValueDispatch, Store, StoreManager, log_cas_error, log_error, log_error_v3,
+    DEFAULT_STORE_TABLE_CAPACITY, Error, KeyValueDispatch, Store, StoreManager, log_cas_error,
+    log_error, log_error_v3,
 };
 pub use runtime_config::RuntimeConfig;
 use spin_core::async_trait;
@@ -132,7 +133,7 @@ impl Factor for KeyValueFactor {
             store_manager: app_state.store_manager.clone(),
             allowed_stores,
             semaphore: ctx
-                .semaphore_builder
+                .semaphore_builder()
                 .with_connection_semaphore(app_state.semaphore.clone())
                 .build(),
             otel,
@@ -155,7 +156,7 @@ pub struct AppState {
     /// component is allowed to use.
     component_allowed_stores: HashMap<String, HashSet<String>>,
     /// App-scoped semaphore used to limit in-flight key-value operations.
-    semaphore: Semaphore,
+    semaphore: ConnectionSemaphore,
 }
 
 impl AppState {
@@ -171,10 +172,10 @@ impl AppState {
             .any(|stores| stores.contains(label))
     }
 
-    /// Get a store by label.
-    pub async fn get_store(&self, label: &str) -> Option<Arc<dyn Store>> {
-        self.store_manager.get(label).await.ok()
-    }
+    // /// Get a store by label.
+    // pub async fn get_store(&self, label: &str) -> Option<Arc<dyn Store>> {
+    //     self.store_manager.get(label).await.ok()
+    // }
 }
 
 /// `SwapError` are errors that occur during compare and swap operations

@@ -20,6 +20,7 @@ hyper-util = { workspace = true }
 serde = { workspace = true }
 spin-core = { path = "../core" }
 spin-factor-key-value = { path = "../factor-key-value" }
+spin-factor-outbound-http = { path = "../factor-outbound-http" }
 spin-semaphore = { path = "../semaphore" }
 tokio = { workspace = true, features = ["rt", "sync"] }
 

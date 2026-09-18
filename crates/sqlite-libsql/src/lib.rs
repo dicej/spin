@@ -1,6 +1,7 @@
 use anyhow::Context;
 use async_trait::async_trait;
 use spin_factor_sqlite::{Connection, QueryAsyncResult};
+use spin_semaphore::{Permit, Semaphore, Type};
 use spin_world::spin::sqlite3_1_0::sqlite as v3;
 use spin_world::spin::sqlite3_1_0::sqlite::{self, RowResult};
 use tokio::sync::OnceCell;
@@ -13,24 +14,23 @@ pub struct LazyLibSqlConnection {
     // we're in the `Connection` implementation to create. Since we only want to do
     // this once, we use a `OnceCell` to store it.
     inner: OnceCell<LibSqlConnection>,
+    semaphore: Semaphore,
 }
 
 impl LazyLibSqlConnection {
-    pub fn new(url: String, token: String) -> Self {
+    pub fn new(url: String, token: String, semaphore: Semaphore) -> Self {
         Self {
             url,
             token,
             inner: OnceCell::new(),
+            semaphore,
         }
     }
 
     pub async fn get_or_create_connection(&self) -> Result<&LibSqlConnection, v3::Error> {
         self.inner
             .get_or_try_init(|| async {
-                let permit = self
-                    .semaphore
-                    .acquire(ResourceType::RemoteSqliteConnection)
-                    .await?;
+                let permit = self.semaphore.acquire(Type::Socket).await?;
                 LibSqlConnection::create(self.url.clone(), self.token.clone(), permit)
                     .await
                     .context("failed to create SQLite client")
@@ -88,15 +88,11 @@ impl Connection for LazyLibSqlConnection {
 #[derive(Clone)]
 pub struct LibSqlConnection {
     inner: libsql::Connection,
-    _permit: ResourcePermit,
+    _permit: Permit,
 }
 
 impl LibSqlConnection {
-    pub async fn create(
-        url: String,
-        token: String,
-        permit: ResourcePermit,
-    ) -> anyhow::Result<Self> {
+    pub async fn create(url: String, token: String, permit: Permit) -> anyhow::Result<Self> {
         let db = libsql::Builder::new_remote(url, token).build().await?;
         let inner = db.connect()?;
         Ok(Self {

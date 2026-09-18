@@ -417,7 +417,13 @@ mod tests {
             .add_component_variables("test-component", [("test_key".into(), template.into())])
             .unwrap();
         resolver.add_provider(Box::new(TestProvider));
-        resolver.resolve("test-component", Key("test_key")).await
+        resolver
+            .resolve(
+                "test-component",
+                Key("test_key"),
+                &Semaphore::unlimited().build(),
+            )
+            .await
     }
 
     #[tokio::test]

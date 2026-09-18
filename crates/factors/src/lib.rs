@@ -22,6 +22,8 @@ pub use crate::{
     },
 };
 
+pub use spin_semaphore::SemaphoreBuilder;
+
 /// Result wrapper type defaulting to use [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

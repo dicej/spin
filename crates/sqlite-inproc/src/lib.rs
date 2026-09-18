@@ -7,6 +7,7 @@ use std::{
 use anyhow::Context as _;
 use async_trait::async_trait;
 use spin_factor_sqlite::{Connection, QueryAsyncResult};
+use spin_semaphore::{Permit, Semaphore, Type};
 use spin_world::spin::sqlite3_1_0::sqlite;
 use spin_world::spin::sqlite3_1_0::sqlite::{self as v3};
 
@@ -43,27 +44,35 @@ impl InProcDatabaseLocation {
     }
 }
 
+struct PermittedConnection {
+    inner: rusqlite::Connection,
+    _permit: Option<Permit>,
+}
+
 /// A connection to a sqlite database
 pub struct InProcConnection {
     location: InProcDatabaseLocation,
     allow_attach_file: bool,
-    connection: OnceLock<Arc<Mutex<rusqlite::Connection>>>,
+    connection: OnceLock<Arc<Mutex<PermittedConnection>>>,
+    semaphore: Semaphore,
 }
 
 impl InProcConnection {
     pub fn new(
         location: InProcDatabaseLocation,
         allow_attach_file: bool,
+        semaphore: Semaphore,
     ) -> Result<Self, sqlite::Error> {
         let connection = OnceLock::new();
         Ok(Self {
             location,
             allow_attach_file,
             connection,
+            semaphore,
         })
     }
 
-    pub async fn db_connection(&self) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
+    pub async fn db_connection(&self) -> Result<Arc<Mutex<PermittedConnection>>, sqlite::Error> {
         if let Some(c) = self.connection.get() {
             return Ok(c.clone());
         }
@@ -71,8 +80,9 @@ impl InProcConnection {
         // We might do duplicate work here if there's a race, but that's fine.
         let permit = self
             .semaphore
-            .acquire(ResourceType::LocalSqliteConnection)
-            .await?;
+            .acquire(Type::FileDescriptor)
+            .await
+            .map_err(|e| sqlite::Error::Io(e.to_string()))?;
         let new = self.create_connection(permit)?;
         Ok(self.connection.get_or_init(|| new)).cloned()
     }
@@ -80,29 +90,32 @@ impl InProcConnection {
     fn create_connection(
         &self,
         permit: Permit,
-    ) -> Result<Arc<Mutex<rusqlite::Connection>>, sqlite::Error> {
+    ) -> Result<Arc<Mutex<PermittedConnection>>, sqlite::Error> {
         let connection = match &self.location {
             InProcDatabaseLocation::InMemory => PermittedConnection {
-                inner: rusqlite::Connection::open_in_memory(),
+                inner: rusqlite::Connection::open_in_memory()
+                    .map_err(|e| sqlite::Error::Io(e.to_string()))?,
                 _permit: None,
             },
             InProcDatabaseLocation::Path(path) => PermittedConnection {
-                inner: rusqlite::Connection::open(path),
+                inner: rusqlite::Connection::open(path)
+                    .map_err(|e| sqlite::Error::Io(e.to_string()))?,
                 _permit: Some(permit),
             },
-        }
-        .map_err(|e| sqlite::Error::Io(e.to_string()))?;
+        };
         if !self.allow_attach_file {
-            connection.authorizer(Some(|ctx: rusqlite::hooks::AuthContext<'_>| {
-                use rusqlite::hooks::{AuthAction, Authorization};
-                match ctx.action {
-                    // Deny attaching files except tempfile ("") and in-memory (":memory:") databases
-                    AuthAction::Attach { filename } if !matches!(filename, "" | ":memory:") => {
-                        Authorization::Deny
+            connection
+                .inner
+                .authorizer(Some(|ctx: rusqlite::hooks::AuthContext<'_>| {
+                    use rusqlite::hooks::{AuthAction, Authorization};
+                    match ctx.action {
+                        // Deny attaching files except tempfile ("") and in-memory (":memory:") databases
+                        AuthAction::Attach { filename } if !matches!(filename, "" | ":memory:") => {
+                            Authorization::Deny
+                        }
+                        _ => Authorization::Allow,
                     }
-                    _ => Authorization::Allow,
-                }
-            }));
+                }));
         }
         Ok(Arc::new(Mutex::new(connection)))
     }
@@ -142,7 +155,7 @@ impl Connection for InProcConnection {
 
         let the_work = move || {
             let conn = connection.lock().unwrap();
-            let mut statement = match conn.prepare_cached(&query) {
+            let mut statement = match conn.inner.prepare_cached(&query) {
                 Ok(s) => s,
                 Err(e) => {
                     _ = cols_tx.send(Default::default());
@@ -204,7 +217,8 @@ impl Connection for InProcConnection {
         let statements = statements.to_owned();
         tokio::task::spawn_blocking(move || {
             let conn = connection.lock().unwrap();
-            conn.execute_batch(&statements)
+            conn.inner
+                .execute_batch(&statements)
                 .context("failed to execute batch statements")
         })
         .await?
@@ -215,13 +229,13 @@ impl Connection for InProcConnection {
     async fn changes(&self) -> Result<u64, sqlite::Error> {
         let connection = self.db_connection().await?;
         let conn = connection.lock().unwrap();
-        Ok(conn.changes())
+        Ok(conn.inner.changes())
     }
 
     async fn last_insert_rowid(&self) -> Result<i64, sqlite::Error> {
         let connection = self.db_connection().await?;
         let conn = connection.lock().unwrap();
-        Ok(conn.last_insert_rowid())
+        Ok(conn.inner.last_insert_rowid())
     }
 
     fn summary(&self) -> Option<String> {
@@ -251,13 +265,14 @@ fn convert_row(row: &rusqlite::Row) -> Result<sqlite::RowResult, rusqlite::Error
 
 // This function lives outside the query function to make it more readable.
 fn execute_query(
-    connection: &Mutex<rusqlite::Connection>,
+    connection: &Mutex<PermittedConnection>,
     query: &str,
     parameters: Vec<sqlite::Value>,
     max_result_bytes: usize,
 ) -> Result<sqlite::QueryResult, sqlite::Error> {
     let conn = connection.lock().unwrap();
     let mut statement = conn
+        .inner
         .prepare_cached(query)
         .map_err(|e| sqlite::Error::Io(e.to_string()))?;
     let columns = statement

@@ -11,6 +11,7 @@ async-trait = { workspace = true }
 # libsqlite3-sys as used by spin-sqlite-inproc.
 libsql = { version = "0.5", features = ["remote"], default-features = false }
 spin-factor-sqlite = { path = "../factor-sqlite" }
+spin-semaphore = { path = "../semaphore" }
 spin-world = { path = "../world" }
 tokio = { workspace = true, features = ["full"] }
 

@@ -9,10 +9,12 @@ use std::{
     collections::HashMap,
     marker::PhantomData,
     sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
 };
 
-use spin_connection_semaphore::{ConnectionPermit, ConnectionSemaphore};
+use spin_semaphore::{Permit, Semaphore, Type};
 use wasmtime::component::{HasData, Resource};
+use wasmtime_wasi::p2::bindings::sockets::network as p2_network;
 use wasmtime_wasi::p2::bindings::sockets::tcp::{self as p2_tcp, IpSocketAddress, ShutdownType};
 use wasmtime_wasi::p2::bindings::sockets::tcp_create_socket as p2_tcp_create;
 use wasmtime_wasi::p2::bindings::sockets::udp as p2_udp;
@@ -28,8 +30,8 @@ use wasmtime_wasi::{
 /// permit store, enabling per-connection quota tracking.
 pub struct SpinSocketsView<'a, T> {
     pub(crate) inner: WasiSocketsCtxView<'a>,
-    pub(crate) permit_state: Option<Arc<SocketPermitState>>,
-    pub(crate) descriptor_permit_state: PermitState,
+    pub(crate) semaphore: Semaphore,
+    pub(crate) permits: HashMap<u32, Permit>,
     pub(crate) getter: fn(&mut T) -> WasiSocketsCtxView<'_>,
 }
 
@@ -299,7 +301,16 @@ impl<T> p2_tcp_create::Host for SpinSocketsView<'_, T> {
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
     ) -> wasmtime_wasi::p2::SocketResult<Resource<TcpSocket>> {
-        let permit = self.semaphore.acquire(Type::Socket).await?;
+        // TODO: Update `wasmtime_wasi`'s bindings generation to generate an
+        // async function so we don't have to give up on `Poll::Pending`:
+        let permit = match self
+            .semaphore
+            .acquire(Type::Socket)
+            .poll(Context::from_waker(Waker::noop()))
+        {
+            Poll::Pending => return Err(p2_network::ErrorCode::NewSocketLimit),
+            Poll::Ready(result) => result?,
+        };
         let socket = p2_tcp_create::Host::create_tcp_socket(&mut self.inner, address_family)?;
         self.permits.insert(socket.rep(), permit);
         Ok(socket)
@@ -472,9 +483,13 @@ impl<T> p2_udp_create::Host for SpinSocketsView<'_, T> {
         &mut self,
         address_family: wasmtime_wasi::p2::bindings::sockets::network::IpAddressFamily,
     ) -> wasmtime_wasi::p2::SocketResult<Resource<UdpSocket>> {
-        let permit = self.semaphore.acquire(Type::Socket).await?;
+        let permit = self
+            .semaphore
+            .acquire(Type::Socket)
+            .await
+            .map_err(|_| p2_network::ErrorCode::NewSocketLimit)?;
         let sock = p2_udp_create::Host::create_udp_socket(&mut self.inner, address_family).await?;
-        self.permits.insert(socket.rep(), permit);
+        self.permits.insert(sock.rep(), permit);
         Ok(sock)
     }
 }
@@ -513,9 +528,18 @@ impl<T> p3_HostTcpSocket for SpinSocketsView<'_, T> {
         &mut self,
         address_family: p3_IpAddressFamily,
     ) -> P3SocketResult<Resource<p3_types::TcpSocket>> {
-        let permit = self.semaphore.acquire(Type::Socket).await?;
+        // TODO: Update `wasmtime_wasi`'s bindings generation to generate an
+        // async function so we don't have to give up on `Poll::Pending`:
+        let permit = match self
+            .semaphore
+            .acquire(Type::Socket)
+            .poll(Context::from_waker(Waker::noop()))
+        {
+            Poll::Pending => return Err(p3_types::ErrorCode::NewSocketLimit),
+            Poll::Ready(result) => result?,
+        };
         let socket = p3_HostTcpSocket::create(&mut self.inner, address_family)?;
-        self.permits.insert(socket.rep(), descriptor_permit);
+        self.permits.insert(socket.rep(), permit);
         Ok(socket)
     }
 
@@ -684,7 +708,11 @@ impl<T> p3_HostUdpSocket for SpinSocketsView<'_, T> {
         &mut self,
         address_family: p3_IpAddressFamily,
     ) -> P3SocketResult<Resource<p3_types::UdpSocket>> {
-        let permit = self.semaphore.acquire(Type::Socket).await?;
+        let permit = self
+            .semaphore
+            .acquire(Type::Socket)
+            .await
+            .map_err(|e| p3_types::ErrorCode::Other(Some(e.to_string())))?;
         let sock = p3_HostUdpSocket::create(&mut self.inner, address_family).await?;
         self.permits.insert(sock.rep(), permit);
         Ok(sock)

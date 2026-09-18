@@ -9,6 +9,7 @@ use spin_factors::{
     anyhow::{self, Context as _, bail},
 };
 use spin_factors_test::{TestEnvironment, toml};
+use spin_semaphore::Semaphore;
 use spin_world::{async_trait, spin::sqlite3_1_0::sqlite as v3, v2::sqlite as v2};
 use v2::HostConnection as _;
 
@@ -104,8 +105,9 @@ impl spin_factor_sqlite::ConnectionCreator for MockConnectionCreator {
     async fn create_connection(
         &self,
         label: &str,
+        semaphore: &Semaphore,
     ) -> Result<Arc<dyn spin_factor_sqlite::Connection + 'static>, v3::Error> {
-        let _ = label;
+        let _ = (label, semaphore);
         Ok(Arc::new(MockConnection))
     }
 }

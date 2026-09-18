@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use spin_factor_otel::OtelFactorState;
 use spin_factors::{Factor, anyhow};
 use spin_locked_app::MetadataKey;
+use spin_semaphore::Semaphore;
 use spin_world::spin::sqlite3_1_0::sqlite as v3;
 use spin_world::v1::sqlite as v1;
 use spin_world::v2::sqlite as v2;
@@ -88,7 +89,7 @@ impl Factor for SqliteFactor {
             allowed_databases,
             ctx.app_state().connection_creators.clone(),
             otel,
-            ctx.app_state().semaphore.instance(),
+            ctx.semaphore_builder().build(),
         ))
     }
 }
@@ -149,20 +150,20 @@ impl AppState {
         }
     }
 
-    /// Get a connection for a given database label.
-    ///
-    /// Returns `None` if there is no connection creator for the given label.
-    pub async fn get_connection(
-        &self,
-        label: &str,
-    ) -> Option<Result<Arc<dyn Connection>, v3::Error>> {
-        let connection = self
-            .connection_creators
-            .get(label)?
-            .create_connection(label)
-            .await;
-        Some(connection)
-    }
+    // /// Get a connection for a given database label.
+    // ///
+    // /// Returns `None` if there is no connection creator for the given label.
+    // pub async fn get_connection(
+    //     &self,
+    //     label: &str,
+    // ) -> Option<Result<Arc<dyn Connection>, v3::Error>> {
+    //     let connection = self
+    //         .connection_creators
+    //         .get(label)?
+    //         .create_connection(label)
+    //         .await;
+    //     Some(connection)
+    // }
 
     /// Returns true if the given database label is used by any component.
     pub fn database_is_used(&self, label: &str) -> bool {
@@ -181,20 +182,22 @@ pub trait ConnectionCreator: Send + Sync {
     async fn create_connection(
         &self,
         label: &str,
+        semaphore: &Semaphore,
     ) -> Result<Arc<dyn Connection + 'static>, v3::Error>;
 }
 
 #[async_trait]
 impl<F> ConnectionCreator for F
 where
-    F: Fn() -> anyhow::Result<Arc<dyn Connection + 'static>> + Send + Sync + 'static,
+    F: Fn(&Semaphore) -> anyhow::Result<Arc<dyn Connection + 'static>> + Send + Sync + 'static,
 {
     async fn create_connection(
         &self,
         label: &str,
+        semaphore: &Semaphore,
     ) -> Result<Arc<dyn Connection + 'static>, v3::Error> {
         let _ = label;
-        (self)().map_err(|_| v3::Error::InvalidConnection)
+        (self)(semaphore).map_err(|_| v3::Error::InvalidConnection)
     }
 }
 

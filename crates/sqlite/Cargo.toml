@@ -10,4 +10,5 @@ spin-factor-sqlite = { path = "../factor-sqlite" }
 spin-factors = { path = "../factors" }
 spin-sqlite-inproc = { path = "../sqlite-inproc" }
 spin-sqlite-libsql = { path = "../sqlite-libsql" }
+spin-semaphore = { path = "../semaphore" }
 toml = { workspace = true }

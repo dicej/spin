@@ -6,6 +6,7 @@ use spin_core::wasmtime::component::{Accessor, FutureReader, StreamReader};
 use spin_factor_otel::OtelFactorState;
 use spin_factors::wasmtime::component::Resource;
 use spin_factors::{SelfInstanceBuilder, anyhow};
+use spin_semaphore::Semaphore;
 use spin_world::MAX_HOST_BUFFERED_BYTES;
 use spin_world::spin::sqlite3_1_0::sqlite as v3;
 use spin_world::v1::sqlite as v1;
@@ -22,6 +23,7 @@ pub struct InstanceState {
     /// A map from database label to connection creators.
     connection_creators: HashMap<String, Arc<dyn ConnectionCreator>>,
     otel: OtelFactorState,
+    semaphore: Semaphore,
 }
 
 impl InstanceState {
@@ -32,12 +34,14 @@ impl InstanceState {
         allowed_databases: Arc<HashSet<String>>,
         connection_creators: HashMap<String, Arc<dyn ConnectionCreator>>,
         otel: OtelFactorState,
+        semaphore: Semaphore,
     ) -> Self {
         Self {
             allowed_databases,
             connections: spin_resource_table::Table::new(256),
             connection_creators,
             otel,
+            semaphore,
         }
     }
 
@@ -60,7 +64,7 @@ impl InstanceState {
             .connection_creators
             .get(&database)
             .ok_or(v3::Error::NoSuchDatabase)?
-            .create_connection(&database)
+            .create_connection(&database, &self.semaphore)
             .await?;
         tracing::Span::current().record(
             "sqlite.backend",
@@ -159,18 +163,23 @@ impl<T> v3::HostConnectionWithStore<T> for crate::SqliteFactorData {
     ) -> Result<Resource<v3::Connection>, v3::Error> {
         // TODO: this duplicates `open_impl` logic but split up to move
         // in and out of the Accessor. How to dedupe?
-        let conn_creator = accessor.with(|mut access| {
+        let (conn_creator, semaphore) = accessor.with(|mut access| {
             let host = access.get();
             if !host.allowed_databases.contains(&database) {
                 return Err(v3::Error::AccessDenied);
             }
-            host.connection_creators
-                .get(&database)
-                .ok_or(v3::Error::NoSuchDatabase)
-                .cloned()
+            Ok((
+                host.connection_creators
+                    .get(&database)
+                    .ok_or(v3::Error::NoSuchDatabase)
+                    .cloned()?,
+                host.semaphore.clone(),
+            ))
         })?;
 
-        let conn = conn_creator.create_connection(&database).await?;
+        let conn = conn_creator
+            .create_connection(&database, &semaphore)
+            .await?;
 
         tracing::Span::current().record(
             "sqlite.backend",

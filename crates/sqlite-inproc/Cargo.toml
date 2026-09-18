@@ -10,6 +10,7 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled", "hooks"] }
 spin-factor-sqlite = { path = "../factor-sqlite" }
+spin-semaphore = { path = "../semaphore" }
 spin-wasi-async = { path = "../wasi-async" }
 spin-world = { path = "../world" }
 tokio = { workspace = true, features = ["rt", "sync"] }

@@ -1,3 +1,5 @@
+use spin_semaphore::{Permit, Semaphore, Type};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use wasmtime::AsContextMut;
@@ -10,7 +12,8 @@ use wasmtime_wasi::p3::bindings::filesystem::types as p3_types;
 
 pub struct SpinFilesystemView<'a, T> {
     pub(crate) inner: WasiFilesystemCtxView<'a>,
-    pub(crate) permit_state: PermitState,
+    pub(crate) semaphore: Semaphore,
+    pub(crate) permits: HashMap<u32, Permit>,
     pub(crate) getter: fn(&mut T) -> WasiFilesystemCtxView<'_>,
 }
 
@@ -193,16 +196,24 @@ impl<T> p2_types::HostDescriptor for SpinFilesystemView<'_, T> {
         oflags: p2_types::OpenFlags,
         flags: p2_types::DescriptorFlags,
     ) -> Result<Resource<p2_types::Descriptor>, TrappableError<p2_types::ErrorCode>> {
-        let permit = self.permit_state.semaphore.acquire().await?;
+        let permit = self
+            .semaphore
+            .acquire(Type::FileDescriptor)
+            .await
+            .map_err(|_| {
+                // Ideally, we'd return something like POSIX's `ENFILE`, but
+                // `wasi:filesystem/types#error-code` does have any equivalent.
+                p2_types::ErrorCode::Io
+            })?;
         p2_types::HostDescriptor::open_at(&mut self.inner, fd, path_flags, path, oflags, flags)
             .await
             .inspect(|fd| {
-                self.permit_state.active.insert(fd.rep(), permit);
+                self.permits.insert(fd.rep(), permit);
             })
     }
 
     fn drop(&mut self, fd: Resource<p2_types::Descriptor>) -> wasmtime::Result<()> {
-        let _permit = self.permit_state.active.remove(fd.rep());
+        let _permit = self.permits.remove(fd.rep());
         p2_types::HostDescriptor::drop(&mut self.inner, fd)?;
     }
 
@@ -519,21 +530,26 @@ impl<T: 'static> p3_types::HostDescriptorWithStore<T> for SpinFilesystem<T> {
         open_flags: p3_types::OpenFlags,
         flags: p3_types::DescriptorFlags,
     ) -> Result<Resource<Descriptor>, TrappableError<p3_types::ErrorCode>> {
-        let (getter, semaphore) = store.with(|mut store| {
-            (
-                store.get().getter,
-                store.get().permit_state.semaphore.clone(),
-            )
-        });
-        let store = store.with_getter::<WasiFilesystem>(getter);
-        let permit = semaphore.acquire().await?;
+        let (getter, semaphore) =
+            store.with(|mut store| (store.get().getter, store.get().semaphore.clone()));
+        let wasi_store = store.with_getter::<WasiFilesystem>(getter);
+        let permit = semaphore.acquire(Type::FileDescriptor).await.map_err(|e| {
+            // Ideally, we'd return something like POSIX's `ENFILE`, but
+            // `wasi:filesystem/types#error-code` does have any equivalent.
+            p3_types::ErrorCode::Other(Some(e.to_string()))
+        })?;
         <WasiFilesystem as p3_types::HostDescriptorWithStore<T>>::open_at(
-            &store, fd, path_flags, path, open_flags, flags,
+            &wasi_store,
+            fd,
+            path_flags,
+            path,
+            open_flags,
+            flags,
         )
         .await
         .inspect(|fd| {
-            store.with(|mut store| store.get().permit_state.active.insert(fd.rep(), permit))
-        });
+            store.with(|mut store| store.get().permits.insert(fd.rep(), permit));
+        })
     }
 
     async fn readlink_at(
@@ -637,7 +653,7 @@ impl<T: 'static> p3_types::HostDescriptorWithStore<T> for SpinFilesystem<T> {
 
 impl<T> p3_types::HostDescriptor for SpinFilesystemView<'_, T> {
     fn drop(&mut self, fd: Resource<Descriptor>) -> wasmtime::Result<()> {
-        let _permit = self.permit_state.active.remove(fd.rep());
+        let _permit = self.permits.remove(fd.rep());
         p3_types::HostDescriptor::drop(&mut self.inner, fd)
     }
 }

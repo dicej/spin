@@ -70,6 +70,7 @@ fn expand_factors(input: &DeriveInput) -> syn::Result<TokenStream> {
     let Factor = quote!(#factors_path::Factor);
     let ConfiguredApp = quote!(#factors_path::ConfiguredApp);
     let FactorInstanceBuilder = quote!(#factors_path::FactorInstanceBuilder);
+    let SemaphoreBuilder = quote!(#factors_path::SemaphoreBuilder);
 
     Ok(quote! {
         impl #factors_path::RuntimeFactors for #name {
@@ -147,7 +148,7 @@ fn expand_factors(input: &DeriveInput) -> syn::Result<TokenStream> {
                 &self,
                 configured_app: &#ConfiguredApp<Self>,
                 component_id: &str,
-                semaphore_builder: &SemaphoreBuilder,
+                semaphore_builder: &#SemaphoreBuilder,
             ) -> #Result<Self::InstanceBuilders> {
                 let app_component = configured_app.app().get_component(component_id).ok_or_else(|| {
                     #factors_path::Error::UnknownComponent(component_id.to_string())

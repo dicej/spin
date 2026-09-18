@@ -12,6 +12,7 @@ use spin_factors::{
     anyhow::{self, Context as _},
     runtime_config::toml::GetTomlValue,
 };
+use spin_semaphore::Semaphore;
 use spin_sqlite_inproc::InProcDatabaseLocation;
 use spin_sqlite_libsql::LazyLibSqlConnection;
 
@@ -124,9 +125,10 @@ impl RuntimeConfigResolver {
             .default_database_dir
             .as_deref()
             .map(|p| p.join(DEFAULT_SQLITE_DB_FILENAME));
-        let factory = move || {
+        let factory = move |semaphore: &Semaphore| {
             let location = InProcDatabaseLocation::from_path(path.clone())?;
-            let connection = spin_sqlite_inproc::InProcConnection::new(location, false)?;
+            let connection =
+                spin_sqlite_inproc::InProcConnection::new(location, false, semaphore.clone())?;
             Ok(Arc::new(connection) as _)
         };
         Arc::new(factory)
@@ -162,10 +164,11 @@ impl InProcDatabase {
             .as_ref()
             .map(|p| resolve_relative_path(p, base_dir));
         let location = InProcDatabaseLocation::from_path(path)?;
-        let factory = move || {
+        let factory = move |semaphore: &Semaphore| {
             let connection = spin_sqlite_inproc::InProcConnection::new(
                 location.clone(),
                 self.allow_attach_file,
+                semaphore.clone(),
             )?;
             Ok(Arc::new(connection) as _)
         };
@@ -204,8 +207,9 @@ impl LibSqlDatabase {
                 )
             })?
             .to_owned();
-        let factory = move || {
-            let connection = LazyLibSqlConnection::new(url.clone(), self.token.clone());
+        let factory = move |semaphore: &Semaphore| {
+            let connection =
+                LazyLibSqlConnection::new(url.clone(), self.token.clone(), semaphore.clone());
             Ok(Arc::new(connection) as _)
         };
         Ok(factory)

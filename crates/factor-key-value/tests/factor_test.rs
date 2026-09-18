@@ -3,6 +3,7 @@ use spin_core::async_trait;
 use spin_factor_key_value::{Cas, KeyValueFactor, RuntimeConfig, Store, StoreManager, v3};
 use spin_factors::RuntimeFactors;
 use spin_factors_test::{TestEnvironment, toml};
+use spin_semaphore::Semaphore;
 use spin_world::v2::key_value::{Error, HostStore};
 use std::{collections::HashSet, sync::Arc};
 
@@ -107,8 +108,8 @@ struct MockStoreManager;
 
 #[async_trait]
 impl StoreManager for MockStoreManager {
-    async fn get(&self, name: &str) -> Result<Arc<dyn Store>, Error> {
-        let _ = name;
+    async fn get(&self, name: &str, semaphore: &Semaphore) -> Result<Arc<dyn Store>, Error> {
+        let _ = (name, semaphore);
         Ok(Arc::new(MockStore))
     }
 

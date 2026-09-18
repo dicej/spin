@@ -85,13 +85,13 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn resolve_expression(
-        &self,
-        expr: impl Into<Box<str>>,
-    ) -> spin_expressions::Result<String> {
-        let template = Template::new(expr)?;
-        self.expression_resolver.resolve_template(&template).await
-    }
+    // pub async fn resolve_expression(
+    //     &self,
+    //     expr: impl Into<Box<str>>,
+    // ) -> spin_expressions::Result<String> {
+    //     let template = Template::new(expr)?;
+    //     self.expression_resolver.resolve_template(&template).await
+    // }
 
     pub fn expression_resolver(&self) -> &Arc<ExpressionResolver> {
         &self.expression_resolver
